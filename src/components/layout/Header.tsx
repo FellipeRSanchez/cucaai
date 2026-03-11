@@ -2,15 +2,39 @@
 
 import { useModelsStore } from '@/store/modelsStore';
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Paperclip, Globe, Wrench, ChevronDown, LogOut, Loader2 } from 'lucide-react';
+import { Bot, Paperclip, Globe, Wrench, ChevronDown, LogOut, Loader2, ChevronRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
+import clsx from 'clsx';
 
 import { AGENT_PROFILES, AgentRole } from '@/lib/agents';
 import { useUIStore } from '@/store/uiStore';
 
+// Provider friendly name (short)
+function shortProvider(id: string): string {
+  const prov = id.split('/')[0];
+  const map: Record<string, string> = {
+    anthropic: 'Anthropic',
+    openai: 'OpenAI',
+    google: 'Google',
+    mistralai: 'Mistral',
+    'meta-llama': 'Meta',
+    deepseek: 'DeepSeek',
+    microsoft: 'Microsoft',
+    cohere: 'Cohere',
+    qwen: 'Qwen',
+    xai: 'xAI',
+    perplexity: 'Pplx',
+  };
+  return map[prov] ?? prov;
+}
+
 export function Header() {
-  const { models, fetchModels, selectedModel, setSelectedModel, selectedAgent, setSelectedAgent, isLoading } = useModelsStore();
+  const {
+    models, fetchModels, selectedModel, setSelectedModel,
+    openExplorer, getSelectedModelData, isLoading
+  } = useModelsStore();
+  const { selectedAgent, setSelectedAgent } = useModelsStore();
   const { webSearchEnabled, setWebSearchEnabled } = useUIStore();
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -19,6 +43,8 @@ export function Header() {
   useEffect(() => {
     fetchModels();
   }, [fetchModels]);
+
+  const selectedModelData = getSelectedModelData();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -60,28 +86,39 @@ export function Header() {
 
   return (
     <header className="h-14 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between px-4 shrink-0 shadow-sm z-10 w-full relative">
-      <div className="flex items-center gap-4">
-        {/* Model Selector */}
-        <div className="relative group">
-          <select 
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            className="appearance-none bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-md px-3 py-1.5 pr-8 hover:border-zinc-700 outline-none focus:ring-1 focus:ring-indigo-500 transition-colors max-w-[200px] truncate shadow-sm cursor-pointer"
-            disabled={isLoading}
-          >
-            <option value="openai/chatgpt-4o-latest">GPT-4o</option>
-            {models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name || m.id.split('/')[1]}
-              </option>
-            ))}
-          </select>
-          <ChevronDown className="absolute right-2.5 top-2 text-zinc-400 pointer-events-none" size={14} />
-        </div>
+      <div className="flex items-center gap-3">
+
+        {/* Model Explorer Trigger */}
+        <button
+          onClick={openExplorer}
+          disabled={isLoading}
+          className={clsx(
+            'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all max-w-[220px]',
+            'bg-zinc-900 border-zinc-800 hover:border-indigo-500/50 hover:bg-zinc-800/80',
+            'focus:outline-none focus:ring-1 focus:ring-indigo-500/50',
+            'disabled:opacity-50 disabled:cursor-wait shadow-sm',
+          )}
+          title="Explorar modelos"
+        >
+          {isLoading ? (
+            <Loader2 size={14} className="animate-spin text-zinc-400 shrink-0" />
+          ) : (
+            <div className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 shadow-sm shadow-indigo-500/50" />
+          )}
+          <span className="text-zinc-200 truncate font-medium text-xs leading-none">
+            {selectedModelData?.name ?? (selectedModel.split('/')[1] ?? selectedModel)}
+          </span>
+          {selectedModelData && (
+            <span className="text-zinc-500 text-[10px] shrink-0 hidden sm:block">
+              {shortProvider(selectedModel)}
+            </span>
+          )}
+          <ChevronDown size={12} className="text-zinc-500 shrink-0" />
+        </button>
 
         {/* Agent Selector */}
         <div className="relative group hidden sm:block">
-          <select 
+          <select
             value={selectedAgent}
             onChange={(e) => setSelectedAgent(e.target.value as AgentRole)}
             className="appearance-none flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-md px-3 py-1.5 pl-8 hover:border-zinc-700 outline-none focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer shadow-sm w-[160px]"
@@ -98,37 +135,37 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-2">
-        <input 
-          type="file" 
-          ref={fileInputRef} 
-          onChange={handleFileChange} 
-          className="hidden" 
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          className="hidden"
           accept=".pdf,.docx,.txt"
         />
-        
-        <HeaderAction 
-          icon={isUploading ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />} 
-          tooltip="Upload" 
+
+        <HeaderAction
+          icon={isUploading ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
+          tooltip="Upload"
           onClick={handleUploadClick}
           disabled={isUploading}
         />
-        <HeaderAction 
-          icon={<Globe size={18} />} 
-          tooltip="Busca Web" 
+        <HeaderAction
+          icon={<Globe size={18} />}
+          tooltip="Busca Web"
           active={webSearchEnabled}
           onClick={() => setWebSearchEnabled(!webSearchEnabled)}
         />
-        <HeaderAction 
-          icon={<Wrench size={18} />} 
-          tooltip="Configurar Ferramentas" 
+        <HeaderAction
+          icon={<Wrench size={18} />}
+          tooltip="Configurar Ferramentas"
           onClick={() => alert('Configurações de ferramentas em breve!')}
         />
-        
+
         <div className="w-px h-6 bg-zinc-800 mx-1" />
-        
-        <HeaderAction 
-          icon={<LogOut size={18} />} 
-          tooltip="Sair" 
+
+        <HeaderAction
+          icon={<LogOut size={18} />}
+          tooltip="Sair"
           onClick={handleLogout}
           className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
         />
@@ -137,23 +174,23 @@ export function Header() {
   );
 }
 
-function HeaderAction({ 
-  icon, 
-  tooltip, 
-  onClick, 
-  active = false, 
+function HeaderAction({
+  icon,
+  tooltip,
+  onClick,
+  active = false,
   disabled = false,
   className = ""
-}: { 
-  icon: React.ReactNode; 
-  tooltip: string; 
+}: {
+  icon: React.ReactNode;
+  tooltip: string;
   onClick?: () => void;
   active?: boolean;
   disabled?: boolean;
   className?: string;
 }) {
   return (
-    <button 
+    <button
       onClick={onClick}
       disabled={disabled}
       className={clsx(
@@ -171,5 +208,3 @@ function HeaderAction({
     </button>
   );
 }
-
-import clsx from 'clsx';

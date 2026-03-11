@@ -7,6 +7,7 @@ import { DocumentsView } from '@/components/views/DocumentsView';
 import { MemoriesView } from '@/components/views/MemoriesView';
 import { GraphView } from '@/components/views/GraphView';
 import { AgentsView } from '@/components/views/AgentsView';
+import { ModelExplorer } from '@/components/chat/ModelExplorer';
 import { useUIStore } from '@/store/uiStore';
 
 export default function Home() {
@@ -38,6 +39,8 @@ export default function Home() {
           {renderView()}
         </main>
       </div>
+      {/* Model Explorer modal – rendered at root level to avoid overflow clipping */}
+      <ModelExplorer />
     </div>
   );
 }
