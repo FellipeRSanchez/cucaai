@@ -156,7 +156,7 @@ interface ModelsState {
 
 export const useModelsStore = create<ModelsState>((set, get) => ({
   models: [],
-  selectedModel: 'openai/chatgpt-4o-latest',
+  selectedModel: 'mistralai/mistral-7b-instruct',
   selectedAgent: 'GERAL',
   isLoading: false,
   error: null,

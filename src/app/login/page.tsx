@@ -59,8 +59,8 @@ export default function LoginPage() {
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md space-y-8 bg-zinc-900/50 border border-zinc-800 p-8 rounded-3xl shadow-2xl backdrop-blur-sm">
         <div className="text-center space-y-2">
-          <div className="mx-auto w-16 h-16 rounded-2xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-900/20 mb-4">
-            <Sparkles className="text-white" size={32} />
+          <div className="mx-auto w-20 h-20 rounded-2xl bg-zinc-800 flex items-center justify-center shadow-lg shadow-indigo-900/20 mb-4 overflow-hidden">
+            <img src="/cuca_logo.png" alt="Cuca AI Logo" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-3xl font-bold text-zinc-100 tracking-tight">Cuca AI</h1>
           <p className="text-zinc-500 text-sm">Entre no seu novo segundo cérebro</p>
@@ -75,8 +75,8 @@ export default function LoginPage() {
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="space-y-1">
             <label className="text-xs font-medium text-zinc-400 ml-1">E-mail</label>
-            <input 
-              type="email" 
+            <input
+              type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -86,8 +86,8 @@ export default function LoginPage() {
           </div>
           <div className="space-y-1">
             <label className="text-xs font-medium text-zinc-400 ml-1">Senha</label>
-            <input 
-              type="password" 
+            <input
+              type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -96,7 +96,7 @@ export default function LoginPage() {
             />
           </div>
 
-          <button 
+          <button
             type="submit"
             disabled={isLoading}
             className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 rounded-xl transition-all shadow-lg shadow-indigo-900/40 active:scale-[0.98] flex items-center justify-center gap-2"
@@ -116,19 +116,19 @@ export default function LoginPage() {
         </div>
 
         <div className="grid grid-cols-2 gap-3 pb-4">
-           <button 
-             onClick={handleGitHubLogin}
-             className="flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-2.5 rounded-xl transition-all border border-zinc-700"
-           >
-             <Github size={18} />
-             <span className="text-sm">GitHub</span>
-           </button>
-           <button 
-             onClick={handleSignUp}
-             className="flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-2.5 rounded-xl transition-all border border-zinc-700"
-           >
-             <span className="text-sm">Criar Conta</span>
-           </button>
+          <button
+            onClick={handleGitHubLogin}
+            className="flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-2.5 rounded-xl transition-all border border-zinc-700"
+          >
+            <Github size={18} />
+            <span className="text-sm">GitHub</span>
+          </button>
+          <button
+            onClick={handleSignUp}
+            className="flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 py-2.5 rounded-xl transition-all border border-zinc-700"
+          >
+            <span className="text-sm">Criar Conta</span>
+          </button>
         </div>
       </div>
     </div>

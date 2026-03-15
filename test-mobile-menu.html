@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste Menu Mobile - Cuca AI</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #09090b;
+            color: #fafafa;
+            min-height: 100vh;
+        }
+
+        .header {
+            height: 56px;
+            border-bottom: 1px solid #27272a;
+            background: #09090b;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 16px;
+            position: relative;
+            z-index: 10;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .mobile-menu-btn {
+            display: none;
+            padding: 8px;
+            border-radius: 6px;
+            color: #a1a1aa;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .mobile-menu-btn:hover {
+            color: #fafafa;
+            background: #27272a;
+        }
+
+        .sidebar {
+            width: 256px;
+            height: 100vh;
+            background: #18181b;
+            border-right: 1px solid #27272a;
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 50;
+            transform: translateX(-100%);
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar.open {
+            transform: translateX(0);
+        }
+
+        .sidebar-header {
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid #27272a;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+
+        .logo img {
+            height: 32px;
+            width: auto;
+        }
+
+        .logo-text {
+            font-weight: bold;
+            font-size: 18px;
+            background: linear-gradient(to right, #818cf8, #a78bfa);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .close-btn {
+            display: none;
+            padding: 8px;
+            border-radius: 6px;
+            color: #a1a1aa;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .close-btn:hover {
+            color: #fafafa;
+            background: #27272a;
+        }
+
+        .overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 40;
+            display: none;
+        }
+
+        .overlay.show {
+            display: block;
+        }
+
+        .content {
+            padding: 20px;
+            margin-left: 0;
+        }
+
+        @media (max-width: 768px) {
+            .mobile-menu-btn {
+                display: block;
+            }
+
+            .close-btn {
+                display: block;
+            }
+
+            .sidebar {
+                transform: translateX(-100%);
+            }
+
+            .sidebar.open {
+                transform: translateX(0);
+            }
+        }
+
+        @media (min-width: 769px) {
+            .sidebar {
+                transform: translateX(0);
+                position: relative;
+            }
+
+            .content {
+                margin-left: 256px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <header class="header">
+        <div class="header-left">
+            <button class="mobile-menu-btn" onclick="toggleMenu()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="3" y1="6" x2="21" y2="6"></line>
+                    <line x1="3" y1="12" x2="21" y2="12"></line>
+                    <line x1="3" y1="18" x2="21" y2="18"></line>
+                </svg>
+            </button>
+            <span>Cuca AI - Header</span>
+        </div>
+    </header>
+
+    <div class="overlay" id="overlay" onclick="toggleMenu()"></div>
+
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <div class="logo">
+                <img src="/cuca_logo.png" alt="Cuca AI Logo">
+                <span class="logo-text">Cuca AI</span>
+            </div>
+            <button class="close-btn" onclick="toggleMenu()">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+            </button>
+        </div>
+        <div style="padding: 12px;">
+            <button
+                style="width: 100%; padding: 8px 16px; background: #4f46e5; color: white; border: none; border-radius: 8px; cursor: pointer;">
+                Novo Chat
+            </button>
+        </div>
+        <nav style="padding: 12px;">
+            <div style="padding: 8px 12px; background: #27272a; border-radius: 8px; margin-bottom: 4px;">
+                Conversar
+            </div>
+            <div style="padding: 8px 12px; color: #a1a1aa; border-radius: 8px; margin-bottom: 4px;">
+                Agentes
+            </div>
+            <div style="padding: 8px 12px; color: #a1a1aa; border-radius: 8px; margin-bottom: 4px;">
+                Documentos
+            </div>
+            <div style="padding: 8px 12px; color: #a1a1aa; border-radius: 8px; margin-bottom: 4px;">
+                Memórias
+            </div>
+        </nav>
+    </aside>
+
+    <main class="content">
+        <h1>Teste do Menu Mobile</h1>
+        <p>Redimensione a janela para menos de 768px para ver o botão de menu aparecer.</p>
+        <p>Clique no botão de menu para abrir/fechar a sidebar.</p>
+
+        <div style="margin-top: 20px; padding: 20px; background: #27272a; border-radius: 8px;">
+            <h2>Instruções:</h2>
+            <ul>
+                <li>Em telas grandes (>768px): Sidebar sempre visível</li>
+                <li>Em telas pequenas (<768px): Botão de menu aparece no header</li>
+                <li>Clique no botão para abrir/fechar a sidebar</li>
+                <li>Clique no overlay para fechar a sidebar</li>
+            </ul>
+        </div>
+    </main>
+
+    <script>
+        function toggleMenu() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('overlay');
+
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('show');
+        }
+
+        // Fechar menu ao clicar em um item
+        document.querySelectorAll('.sidebar button').forEach(btn => {
+            btn.addEventListener('click', () => {
+                if (window.innerWidth < 768) {
+                    toggleMenu();
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>

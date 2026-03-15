@@ -2,7 +2,7 @@
 
 import { useModelsStore } from '@/store/modelsStore';
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Paperclip, Globe, Wrench, ChevronDown, LogOut, Loader2, ChevronRight } from 'lucide-react';
+import { Bot, Paperclip, Globe, Wrench, ChevronDown, LogOut, Loader2, ChevronRight, Menu, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import clsx from 'clsx';
@@ -35,7 +35,7 @@ export function Header() {
     openExplorer, getSelectedModelData, isLoading
   } = useModelsStore();
   const { selectedAgent, setSelectedAgent } = useModelsStore();
-  const { webSearchEnabled, setWebSearchEnabled } = useUIStore();
+  const { webSearchEnabled, setWebSearchEnabled, isMobileMenuOpen, setMobileMenuOpen } = useUIStore();
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
@@ -96,6 +96,14 @@ export function Header() {
   return (
     <header className="h-14 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between px-4 shrink-0 shadow-sm z-10 w-full relative">
       <div className="flex items-center gap-3">
+        {/* Mobile Menu Button */}
+        <button
+          onClick={() => setMobileMenuOpen(!isMobileMenuOpen)}
+          className="md:hidden p-2 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+          title={isMobileMenuOpen ? "Fechar menu" : "Abrir menu"}
+        >
+          {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
 
         {/* Model Explorer Trigger */}
         <button

@@ -11,6 +11,8 @@ interface UIState {
   setUploadModalOpen: (open: boolean) => void;
   webSearchEnabled: boolean;
   setWebSearchEnabled: (enabled: boolean) => void;
+  isMobileMenuOpen: boolean;
+  setMobileMenuOpen: (open: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -22,4 +24,6 @@ export const useUIStore = create<UIState>((set) => ({
   setUploadModalOpen: (open) => set({ isUploadModalOpen: open }),
   webSearchEnabled: false,
   setWebSearchEnabled: (enabled) => set({ webSearchEnabled: enabled }),
+  isMobileMenuOpen: false,
+  setMobileMenuOpen: (open) => set({ isMobileMenuOpen: open }),
 }));
