@@ -140,6 +140,7 @@ interface ModelsState {
   filters: ModelFilters;
   // Actions
   fetchModels: () => Promise<void>;
+  refreshModels: () => Promise<void>;
   setSelectedModel: (modelId: string) => void;
   setSelectedAgent: (agent: AgentRole) => void;
   openExplorer: () => void;
@@ -168,6 +169,18 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
     try {
       const response = await fetch('/api/models');
       if (!response.ok) throw new Error('Failed to fetch models');
+      const data = await response.json();
+      set({ models: Array.isArray(data) ? data : [], isLoading: false });
+    } catch (err: any) {
+      set({ error: err.message, isLoading: false });
+    }
+  },
+
+  refreshModels: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const response = await fetch('/api/models?refresh=1');
+      if (!response.ok) throw new Error('Failed to refresh models');
       const data = await response.json();
       set({ models: Array.isArray(data) ? data : [], isLoading: false });
     } catch (err: any) {

@@ -12,6 +12,7 @@ export interface Message {
   men_conversa_id: string;
   men_papel: 'user' | 'assistant';
   men_conteudo: string;
+  men_modelo?: string;
   men_criado_em: string;
 }
 
@@ -21,7 +22,7 @@ interface ChatState {
   messages: Message[];
   isLoading: boolean;
   error: string | null;
-  
+
   setConversations: (conversations: Conversation[]) => void;
   setCurrentConversationId: (id: string | null) => void;
   setMessages: (messages: Message[]) => void;
@@ -70,9 +71,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
     try {
       const res = await fetch(`/api/conversations?id=${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Falha ao deletar conversa');
-      
+
       const { conversations, currentConversationId } = get();
-      set({ 
+      set({
         conversations: conversations.filter(c => c.con_id !== id),
         currentConversationId: currentConversationId === id ? null : currentConversationId,
         messages: currentConversationId === id ? [] : get().messages

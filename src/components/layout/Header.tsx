@@ -31,7 +31,7 @@ function shortProvider(id: string): string {
 
 export function Header() {
   const {
-    models, fetchModels, selectedModel, setSelectedModel,
+    models, fetchModels, refreshModels, selectedModel, setSelectedModel,
     openExplorer, getSelectedModelData, isLoading
   } = useModelsStore();
   const { selectedAgent, setSelectedAgent } = useModelsStore();
@@ -43,6 +43,15 @@ export function Header() {
   useEffect(() => {
     fetchModels();
   }, [fetchModels]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // keep list fresher in long-lived sessions
+      refreshModels();
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [refreshModels]);
 
   const selectedModelData = getSelectedModelData();
 

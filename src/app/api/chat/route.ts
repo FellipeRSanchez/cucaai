@@ -68,6 +68,18 @@ export async function POST(req: Request) {
       delete (tools as any).internetSearch;
     }
 
+    // Some models (especially free/community) fail with tool calling.
+    // We'll disable tools for models known to be unstable with tools,
+    // and also retry once without tools if streamText fails.
+    const modelIdLower = (selectedModel || '').toLowerCase();
+    const disableToolsForModel =
+      modelIdLower.includes(':free') ||
+      modelIdLower.includes('llama-3.2-3b') ||
+      modelIdLower.includes('mistral-small') ||
+      modelIdLower.includes('mistral-small-3.1');
+
+    const toolsToUse = disableToolsForModel ? undefined : tools;
+
     // Select the correct agent profile (Default to GERAL)
     const agentProfile = AGENT_PROFILES[(selectedAgent as AgentRole) || 'GERAL'];
 
@@ -86,33 +98,17 @@ Sempre em português, a menos que solicitado o contrário.`;
     if (isUserMessage) {
       const userQuery = lastMessage.content;
       console.log('[Chat API] Checking semantic cache for:', userQuery);
-      
+
       const cachedResponse = await checkSemanticCache(userQuery).catch(err => {
         console.error('[Chat API] Semantic cache error:', err);
         return null;
       });
-      
+
       if (cachedResponse) {
         console.log(`[Cache Hit] Similarity: ${cachedResponse.similaridade}`);
-        
-        // We'll return a simulated stream response just to follow the app's standard flow
-        const encoder = new TextEncoder();
-        const customStream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(encoder.encode(`0:"${cachedResponse.resposta.replace(/"/g, '\\"')}"\n`));
-            controller.close();
-          }
-        });
-
-        // Persist the user message and cached response if possible
-        // (Implementation detail: we could create a background task for this too)
-
-        return new Response(customStream, {
-          headers: {
-            'Content-Type': 'text/plain; charset=utf-8',
-            'x-vercel-ai-data-stream': 'v1',
-          },
-        });
+        console.log('[Chat API] Skipping cache to avoid stream format issues');
+        // Skip cache for now to avoid stream format issues
+        // The cache is still being checked and saved, but not returned
       }
     }
 
@@ -129,7 +125,7 @@ Sempre em português, a menos que solicitado o contrário.`;
           })
           .select()
           .single();
-        
+
         if (convError) console.error('Error creating conversation:', convError);
         else activeConversationId = newConv.con_id;
       }
@@ -144,14 +140,20 @@ Sempre em português, a menos que solicitado o contrário.`;
             men_papel: 'user',
             men_conteudo: lastMessage.content
           });
-        
+
         if (msgError) console.error('Error saving user message:', msgError);
       }
     }
 
     // 3. Assemble Context (RAG)
     const userQuery = lastMessage.content;
-    const { memories, documents } = await assembleContext(userQuery);
+    const { memories, documents } = await assembleContext(userQuery, userId);
+
+    console.log('[Chat API] Context assembled:', {
+      memoriesLength: memories?.length ?? 0,
+      documentsLength: documents?.length ?? 0,
+      userId,
+    });
 
     const ragContext = `
 ---
@@ -167,57 +169,78 @@ ${documents}
 
     // 4. Call AI logic if no cache hit
     console.log('[Chat API] Calling AI Model:', modelToUse);
-    const result = await streamText({
-      model: openRouter(modelToUse),
-      messages,
-      system: fullSystemPrompt,
-      tools: tools,
-      maxSteps: 5, // Allow the agent to call multiple tools before responding
-      onFinish: async ({ text }) => {
-        // Save Assistant response to DB
-        if (activeConversationId && text) {
-          const { error: assistantMsgError } = await supabase
-            .schema('cuca')
-            .from('mensagens')
-            .insert({
-              men_conversa_id: activeConversationId,
-              men_papel: 'assistant',
-              men_conteudo: text
-            });
-          
-          if (assistantMsgError) console.error('Error saving assistant message:', assistantMsgError);
-          
-          // Update conversation timestamp
-          const { error: updateError } = await supabase
-            .schema('cuca')
-            .from('conversas')
-            .update({ con_atualizado_em: new Date().toISOString() })
-            .eq('con_id', activeConversationId);
-          
-          if (updateError) console.error('Error updating conversation timestamp:', updateError);
-        }
+    const handleFinish = async (text: string) => {
+      // Save Assistant response to DB
+      if (activeConversationId && text) {
+        const { error: assistantMsgError } = await supabase
+          .schema('cuca')
+          .from('mensagens')
+          .insert({
+            men_conversa_id: activeConversationId,
+            men_papel: 'assistant',
+            men_conteudo: text,
+            men_modelo: modelToUse
+          });
 
-        // Run in background: Save to Semantic Cache if appropriate
-        if (isUserMessage && text) {
-          await saveToSemanticCache(lastMessage.content, text, modelToUse);
-          
-          // Trigger the asynchronous Memory Manager Agent to extract permanent facts
-          runMemoryManager(lastMessage.content, text).catch(err => 
-            console.error('Memory Manager background task failed:', err)
-          );
-          
-          // Trigger the asynchronous Self Reflection Agent
-          runSelfReflection(lastMessage.content, text).catch(err =>
-            console.error('Self Reflection background task failed:', err)
-          );
+        if (assistantMsgError) console.error('Error saving assistant message:', assistantMsgError);
 
-          // Trigger the Knowledge Graph Manager to extract entities and relations
-          runKnowledgeGraphManager(lastMessage.content, text).catch(err =>
-            console.error('Knowledge Graph Manager background task failed:', err)
-          );
-        }
+        // Update conversation timestamp
+        const { error: updateError } = await supabase
+          .schema('cuca')
+          .from('conversas')
+          .update({ con_atualizado_em: new Date().toISOString() })
+          .eq('con_id', activeConversationId);
+
+        if (updateError) console.error('Error updating conversation timestamp:', updateError);
       }
-    });
+
+      // Run in background: Save to Semantic Cache if appropriate
+      if (isUserMessage && text) {
+        await saveToSemanticCache(lastMessage.content, text, modelToUse);
+
+        // Trigger the asynchronous Memory Manager Agent to extract permanent facts
+        runMemoryManager(lastMessage.content, text, userId).catch(err =>
+          console.error('Memory Manager background task failed:', err)
+        );
+
+        // Trigger the asynchronous Self Reflection Agent
+        runSelfReflection(lastMessage.content, text).catch(err =>
+          console.error('Self Reflection background task failed:', err)
+        );
+
+        // Trigger the Knowledge Graph Manager to extract entities and relations
+        runKnowledgeGraphManager(lastMessage.content, text).catch(err =>
+          console.error('Knowledge Graph Manager background task failed:', err)
+        );
+      }
+    };
+
+    let result;
+    try {
+      result = await streamText({
+        model: openRouter(modelToUse),
+        messages,
+        system: fullSystemPrompt,
+        tools: toolsToUse,
+        maxSteps: 5, // Allow the agent to call multiple tools before responding
+        onFinish: async ({ text }) => {
+          await handleFinish(text);
+        }
+      });
+    } catch (primaryError) {
+      console.error('[Chat API] Primary streamText failed, retrying without tools:', primaryError);
+
+      // Retry once without tools to improve compatibility with weaker/free models
+      result = await streamText({
+        model: openRouter(modelToUse),
+        messages,
+        system: fullSystemPrompt,
+        maxSteps: 1,
+        onFinish: async ({ text }) => {
+          await handleFinish(text);
+        }
+      });
+    }
 
     // Add conversation ID to headers if it's new
     const response = result.toDataStreamResponse();

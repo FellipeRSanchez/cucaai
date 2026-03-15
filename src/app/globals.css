@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "highlight.js/styles/github-dark.css";
 
 :root {
   --background: #ffffff;
@@ -23,4 +24,289 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Estilos para blocos de código com botão copiar */
+.code-block-wrapper {
+  position: relative;
+  margin: 1em 0;
+}
+
+.code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  background: rgba(0, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  border-top-left-radius: 0.5rem;
+  border-top-right-radius: 0.5rem;
+}
+
+.copy-button {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.25rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.copy-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.copy-button.copied {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #22c55e;
+}
+
+/* Ajustes no highlight.js para tema escuro */
+pre code.hljs {
+  padding: 1rem;
+  border-radius: 0 0 0.5rem 0.5rem;
+  background: #1f2937 !important;
+}
+
+/* Botões de ação das mensagens */
+.message-actions {
+  display: flex;
+  gap: 0.5rem;
+  position: absolute;
+  top: -2rem;
+  right: 0;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.message-container:hover .message-actions {
+  opacity: 1;
+}
+
+.action-button {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.375rem;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.7rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* ===== BLOCOS ESTRUTURADOS ===== */
+
+/* Analysis Block */
+.analysis-block {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(99, 102, 241, 0.05) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.1);
+  transition: all 0.3s ease;
+}
+
+.analysis-block:hover {
+  border-color: rgba(59, 130, 246, 0.4);
+  box-shadow: 0 6px 24px rgba(59, 130, 246, 0.15);
+}
+
+/* Table Block */
+.table-block {
+  background: rgba(17, 24, 39, 0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(55, 65, 81, 0.5);
+  transition: all 0.3s ease;
+}
+
+.table-block:hover {
+  border-color: rgba(75, 85, 99, 0.7);
+}
+
+.table-block th {
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  background: rgba(31, 41, 55, 0.5);
+}
+
+.table-block tr:hover {
+  background: rgba(55, 65, 81, 0.3) !important;
+}
+
+/* Code Block Enhanced */
+.code-block-enhanced {
+  background: linear-gradient(180deg, rgba(31, 41, 55, 0.9) 0%, rgba(17, 24, 39, 0.95) 100%);
+  border: 1px solid rgba(75, 85, 99, 0.4);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  transition: all 0.3s ease;
+}
+
+.code-block-enhanced:hover {
+  border-color: rgba(107, 114, 128, 0.6);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.4);
+}
+
+.code-block-enhanced pre {
+  margin: 0;
+  background: transparent !important;
+}
+
+/* Insight Block */
+.insight-block {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.12) 0%, rgba(79, 70, 229, 0.08) 100%);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 20px rgba(59, 130, 246, 0.12);
+  animation: insightPulse 3s ease-in-out infinite;
+}
+
+@keyframes insightPulse {
+
+  0%,
+  100% {
+    box-shadow: 0 4px 20px rgba(59, 130, 246, 0.12);
+  }
+
+  50% {
+    box-shadow: 0 4px 24px rgba(59, 130, 246, 0.18);
+  }
+}
+
+/* Warning Block */
+.warning-block {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(249, 115, 22, 0.08) 100%);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  box-shadow: 0 4px 20px rgba(245, 158, 11, 0.12);
+  animation: warningPulse 2s ease-in-out infinite;
+}
+
+@keyframes warningPulse {
+
+  0%,
+  100% {
+    box-shadow: 0 4px 20px rgba(245, 158, 11, 0.12);
+  }
+
+  50% {
+    box-shadow: 0 4px 24px rgba(245, 158, 11, 0.2);
+  }
+}
+
+/* Summary Block */
+.summary-block {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(5, 150, 105, 0.08) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  box-shadow: 0 4px 20px rgba(16, 185, 129, 0.12);
+  position: relative;
+  overflow: hidden;
+}
+
+.summary-block::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #10b981, #34d399, #10b981);
+  animation: summarySlide 3s linear infinite;
+}
+
+@keyframes summarySlide {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Chart Block */
+.chart-block {
+  background: rgba(17, 24, 39, 0.6);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(75, 85, 99, 0.5);
+  transition: all 0.3s ease;
+}
+
+.chart-block:hover {
+  border-color: rgba(107, 114, 128, 0.7);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+
+/* Text Block */
+.text-block {
+  line-height: 1.7;
+  color: rgb(244, 244, 245);
+}
+
+.text-block p {
+  margin-bottom: 1rem;
+}
+
+.text-block p:last-child {
+  margin-bottom: 0;
+}
+
+.text-block ul,
+.text-block ol {
+  margin: 1rem 0;
+  padding-left: 1.5rem;
+}
+
+.text-block li {
+  margin-bottom: 0.5rem;
+}
+
+/* Scrollbar customizada para tabelas e código */
+.overflow-x-auto::-webkit-scrollbar {
+  height: 8px;
+  width: 8px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-track {
+  background: rgba(17, 24, 39, 0.5);
+  border-radius: 4px;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb {
+  background: rgba(107, 114, 128, 0.6);
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.overflow-x-auto::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.8);
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+
+  .analysis-block,
+  .insight-block,
+  .warning-block,
+  .summary-block {
+    padding: 1rem !important;
+  }
+
+  .chart-block .recharts-wrapper {
+    font-size: 10px;
+  }
 }

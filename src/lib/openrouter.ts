@@ -105,12 +105,19 @@ export function enrichModel(raw: OpenRouterRawModel): EnrichedModel {
 
 // ─── API Calls ────────────────────────────────────────────────────────────────
 
-export const getOpenRouterModels = async (): Promise<OpenRouterRawModel[]> => {
+export const getOpenRouterModels = async (forceFresh: boolean = false): Promise<OpenRouterRawModel[]> => {
   try {
-    const res = await fetch('https://openrouter.ai/api/v1/models', {
+    const init: RequestInit & { next?: { revalidate: number } } = {
       headers: { 'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}` },
-      next: { revalidate: 3600 }, // Next.js ISR cache for 1 hour
-    });
+    };
+
+    if (forceFresh) {
+      init.cache = 'no-store';
+    } else {
+      init.next = { revalidate: 3600 }; // Next.js ISR cache for 1 hour
+    }
+
+    const res = await fetch('https://openrouter.ai/api/v1/models', init);
     if (!res.ok) throw new Error('Failed to fetch OpenRouter models');
     const data = await res.json();
     return data.data as OpenRouterRawModel[];
@@ -120,7 +127,7 @@ export const getOpenRouterModels = async (): Promise<OpenRouterRawModel[]> => {
   }
 };
 
-export const getEnrichedModels = async (): Promise<EnrichedModel[]> => {
-  const raw = await getOpenRouterModels();
+export const getEnrichedModels = async (forceFresh: boolean = false): Promise<EnrichedModel[]> => {
+  const raw = await getOpenRouterModels(forceFresh);
   return raw.map(enrichModel);
 };

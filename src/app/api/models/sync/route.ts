@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getEnrichedModels } from '@/lib/openrouter';
 import { getServiceSupabase } from '@/lib/supabase';
 
+export const dynamic = 'force-dynamic';
+
 export async function POST(req: NextRequest) {
   // Light secret check to avoid public abuse
   const secret = req.headers.get('x-sync-secret');
@@ -36,6 +38,7 @@ export async function POST(req: NextRequest) {
     }));
 
     const { error } = await supabase
+      .schema('cuca')
       .from('modelos')
       .upsert(rows, { onConflict: 'id' });
 
@@ -57,6 +60,7 @@ export async function GET() {
   try {
     const supabase = getServiceSupabase();
     const { count } = await supabase
+      .schema('cuca')
       .from('modelos')
       .select('*', { count: 'exact', head: true });
 

@@ -235,12 +235,20 @@ export function ModelExplorer() {
   const {
     isExplorerOpen, closeExplorer, selectedModel, setSelectedModel,
     filters, setFilter, resetFilters, activePreset, setPreset,
-    getAllProviders, getFilteredModels, models, isLoading, fetchModels,
+    getAllProviders, getFilteredModels, models, isLoading, fetchModels, refreshModels,
   } = useModelsStore();
 
   useEffect(() => {
-    if (isExplorerOpen && models.length === 0) fetchModels();
-  }, [isExplorerOpen, models.length, fetchModels]);
+    if (!isExplorerOpen) return;
+
+    if (models.length === 0) {
+      fetchModels();
+      return;
+    }
+
+    // force a fresh pull each time explorer opens
+    refreshModels();
+  }, [isExplorerOpen, models.length, fetchModels, refreshModels]);
 
   const filteredModels = useMemo(() => getFilteredModels(), [
     // eslint-disable-next-line react-hooks/exhaustive-deps
