@@ -7,6 +7,11 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata = {
   title: 'Cuca AI',
   description: 'AI Workspace e Segundo Cérebro',
+  icons: {
+    icon: '/cuca_logo.png',
+    shortcut: '/cuca_logo.png',
+    apple: '/cuca_logo.png',
+  },
 };
 
 export default function RootLayout({

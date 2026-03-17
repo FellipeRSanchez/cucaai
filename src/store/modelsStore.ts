@@ -154,9 +154,25 @@ interface ModelsState {
   getAllProviders: () => string[];
 }
 
+// Função para encontrar o melhor modelo gratuito
+function getBestFreeModel(models: AIModel[]): string {
+  const freeModels = models.filter(m => m.is_free);
+  if (freeModels.length === 0) return 'google/gemma-2-9b-it'; // fallback
+
+  // Ordenar por context_length (maior primeiro) e depois por nome
+  const sorted = freeModels.sort((a, b) => {
+    if (b.context_length !== a.context_length) {
+      return b.context_length - a.context_length;
+    }
+    return a.name.localeCompare(b.name);
+  });
+
+  return sorted[0].id;
+}
+
 export const useModelsStore = create<ModelsState>((set, get) => ({
   models: [],
-  selectedModel: 'mistralai/mistral-7b-instruct',
+  selectedModel: 'google/gemma-2-9b-it', // Modelo free padrão inicial
   selectedAgent: 'GERAL',
   isLoading: false,
   error: null,
@@ -170,7 +186,16 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
       const response = await fetch('/api/models');
       if (!response.ok) throw new Error('Failed to fetch models');
       const data = await response.json();
-      set({ models: Array.isArray(data) ? data : [], isLoading: false });
+      const models = Array.isArray(data) ? data : [];
+
+      // Selecionar automaticamente o melhor modelo gratuito
+      const bestFreeModel = getBestFreeModel(models);
+
+      set({
+        models,
+        selectedModel: bestFreeModel,
+        isLoading: false
+      });
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
     }
@@ -182,7 +207,16 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
       const response = await fetch('/api/models?refresh=1');
       if (!response.ok) throw new Error('Failed to refresh models');
       const data = await response.json();
-      set({ models: Array.isArray(data) ? data : [], isLoading: false });
+      const models = Array.isArray(data) ? data : [];
+
+      // Selecionar automaticamente o melhor modelo gratuito após refresh
+      const bestFreeModel = getBestFreeModel(models);
+
+      set({
+        models,
+        selectedModel: bestFreeModel,
+        isLoading: false
+      });
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
     }
