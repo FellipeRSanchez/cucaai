@@ -36,8 +36,7 @@ export function Header() {
   } = useModelsStore();
   const { selectedAgent, setSelectedAgent } = useModelsStore();
   const { webSearchEnabled, setWebSearchEnabled, isMobileMenuOpen, setMobileMenuOpen } = useUIStore();
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const router = useRouter();
 
   useEffect(() => {
@@ -60,38 +59,6 @@ export function Header() {
     router.push('/login');
   };
 
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const res = await fetch('/api/documents/upload', {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (res.ok) {
-        alert('Documento enviado com sucesso!');
-      } else {
-        const err = await res.json();
-        alert(`Erro: ${err.error}`);
-      }
-    } catch (error) {
-      console.error('Upload error:', error);
-      alert('Erro ao enviar documento.');
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
 
   return (
     <header className="h-14 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between px-4 shrink-0 shadow-sm z-10 w-full relative">
@@ -152,20 +119,7 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-2">
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileChange}
-          className="hidden"
-          accept=".pdf,.docx,.txt"
-        />
 
-        <HeaderAction
-          icon={isUploading ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
-          tooltip="Upload"
-          onClick={handleUploadClick}
-          disabled={isUploading}
-        />
         <HeaderAction
           icon={<Globe size={18} />}
           tooltip="Busca Web"

@@ -2,7 +2,7 @@
 
 import { useChat } from '@ai-sdk/react';
 import { useModelsStore } from '@/store/modelsStore';
-import { Send, Loader2, Sparkles, User, Bot, RefreshCw, Settings, Cpu } from 'lucide-react';
+import { Send, Loader2, Sparkles, User, Bot, RefreshCw, Settings, Cpu, Paperclip, X } from 'lucide-react';
 import { useEffect, useRef, useCallback, useState } from 'react';
 import clsx from 'clsx';
 
@@ -56,6 +56,9 @@ export function ChatInterface() {
 
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [attachedFile, setAttachedFile] = useState<{name: string, id: string} | null>(null);
 
   const { messages, input, handleInputChange, handleSubmit, append, isLoading, setMessages, reload } = useChat({
     api: '/api/chat',
@@ -151,11 +154,53 @@ export function ChatInterface() {
     openExplorer();
   }, [openExplorer]);
 
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/documents/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setAttachedFile({ name: file.name, id: data.documentId });
+      } else {
+        const err = await res.json();
+        alert(`Erro: ${err.error}\nDetalhes: ${err.details || ''}`);
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      alert('Erro ao enviar documento.');
+    } finally {
+      setIsUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleFormSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
+    if (e) e.preventDefault();
+    if (input.trim() || attachedFile) {
+      handleSubmit(e as any);
+      setTimeout(() => setAttachedFile(null), 100);
+    }
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (input.trim()) {
-        handleSubmit(e as any);
+      if (input.trim() || attachedFile) {
+        handleFormSubmit();
       }
     }
   };
@@ -244,13 +289,50 @@ export function ChatInterface() {
       {/* Input Area */}
       <div className="p-4 bg-zinc-950 border-t border-zinc-900/50">
         <div className="max-w-4xl mx-auto relative">
+          
+          {/* File Attachment Indicator */}
+          {attachedFile && (
+            <div className="mb-2 flex items-center gap-2">
+              <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs px-3 py-1.5 rounded-full">
+                <Paperclip size={12} className="shrink-0" />
+                <span className="truncate max-w-[200px]">{attachedFile.name} {isUploading ? '...' : ''}</span>
+                {!isUploading && (
+                  <button 
+                    onClick={() => setAttachedFile(null)} 
+                    className="hover:text-indigo-300 ml-1 p-0.5 rounded-full hover:bg-indigo-500/20 transition-colors"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           <form
-            onSubmit={handleSubmit}
+            onSubmit={handleFormSubmit}
             className="relative flex items-end bg-zinc-900/80 border border-zinc-800 rounded-2xl shadow-xl focus-within:border-indigo-500/50 focus-within:ring-1 focus-within:ring-indigo-500/20 transition-all overflow-hidden"
           >
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleFileChange}
+              className="hidden"
+              accept=".pdf,.docx,.txt"
+            />
+            
+            <button
+              type="button"
+              onClick={handleUploadClick}
+              disabled={isUploading}
+              className="absolute left-2 bottom-2 p-2.5 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+              title="Anexar documento"
+            >
+              {isUploading ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
+            </button>
+
             <textarea
               ref={textareaRef}
-              className="w-full min-h-[56px] bg-transparent text-zinc-100 placeholder-zinc-500 p-4 pr-14 resize-none outline-none text-sm transition-all duration-200"
+              className="w-full min-h-[56px] bg-transparent text-zinc-100 placeholder-zinc-500 py-4 pl-14 pr-14 resize-none outline-none text-sm transition-all duration-200"
               placeholder="Digite sua mensagem (Shift + Enter para nova linha)..."
               value={input}
               onChange={handleInputChange}
@@ -258,9 +340,10 @@ export function ChatInterface() {
               rows={1}
               style={{ maxHeight: '50vh' }}
             />
+            
             <button
               type="submit"
-              disabled={isLoading || !input.trim()}
+              disabled={isLoading || (!input.trim() && !attachedFile)}
               className="absolute right-2 bottom-2 p-2.5 rounded-xl bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 transition-all shadow-lg active:scale-95"
             >
               {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}

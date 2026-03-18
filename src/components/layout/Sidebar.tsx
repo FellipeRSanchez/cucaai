@@ -18,9 +18,16 @@ export function Sidebar() {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        // Buscar nome da tabela usuarios
+        const { data: userData } = await supabase
+          .from('usuarios')
+          .select('usu_nome')
+          .eq('usu_id', user.id)
+          .single();
+
         setUser({
           email: user.email,
-          name: user.user_metadata?.full_name || user.email?.split('@')[0]
+          name: userData?.usu_nome || user.user_metadata?.full_name || user.email?.split('@')[0]
         });
       }
     };

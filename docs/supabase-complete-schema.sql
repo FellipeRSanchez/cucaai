@@ -47,6 +47,17 @@ CREATE TABLE IF NOT EXISTS cuca.documentos (
 );
 
 -- ============================================
+-- TABELA: documentos_chunks
+-- ============================================
+CREATE TABLE IF NOT EXISTS cuca.documentos_chunks (
+  dch_id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  dch_documento UUID NOT NULL REFERENCES cuca.documentos(doc_id) ON DELETE CASCADE,
+  dch_texto TEXT NOT NULL,
+  dch_embedding vector(1536),
+  dch_criado_em TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- ============================================
 -- TABELA: memorias
 -- ============================================
 CREATE TABLE IF NOT EXISTS cuca.memorias (
@@ -117,6 +128,9 @@ CREATE INDEX IF NOT EXISTS idx_mensagens_criado ON cuca.mensagens(men_criado_em 
 CREATE INDEX IF NOT EXISTS idx_documentos_usuario ON cuca.documentos(doc_usuario_id);
 CREATE INDEX IF NOT EXISTS idx_documentos_criado ON cuca.documentos(doc_criado_em DESC);
 
+-- Documentos Chunks
+CREATE INDEX IF NOT EXISTS idx_chunks_documento ON cuca.documentos_chunks(dch_documento);
+
 -- Memórias
 CREATE INDEX IF NOT EXISTS idx_memorias_usuario ON cuca.memorias(mem_usuario_id);
 CREATE INDEX IF NOT EXISTS idx_memorias_relevancia ON cuca.memorias(mem_relevancia DESC);
@@ -142,6 +156,7 @@ ALTER TABLE cuca.memorias ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cuca.cache_semantico ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cuca.grafo_entidades ENABLE ROW LEVEL SECURITY;
 ALTER TABLE cuca.grafo_relacoes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cuca.documentos_chunks ENABLE ROW LEVEL SECURITY;
 
 -- ============================================
 -- POLÍTICAS RLS: conversas
@@ -298,6 +313,19 @@ CREATE POLICY "Usuários podem atualizar relações"
 CREATE POLICY "Usuários podem deletar relações"
   ON cuca.grafo_relacoes FOR DELETE
   USING (true);
+
+-- ============================================
+-- POLÍTICAS RLS: documentos_chunks
+-- ============================================
+CREATE POLICY "Usuários podem ver chunks de seus documentos"
+  ON cuca.documentos_chunks FOR SELECT
+  USING (
+    EXISTS (
+      SELECT 1 FROM cuca.documentos d
+      WHERE d.doc_id = documentos_chunks.dch_documento
+      AND d.doc_usuario_id = auth.uid()
+    )
+  );
 
 -- ============================================
 -- EXTENSÃO NECESSÁRIA (pgvector)

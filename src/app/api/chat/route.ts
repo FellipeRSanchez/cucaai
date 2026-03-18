@@ -52,13 +52,14 @@ export async function POST(req: Request) {
         },
       }
     );
-    const { data: { session } } = await supabaseAuth.auth.getSession();
-
-    if (!session) {
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser();
+    
+    if (authError || !user) {
+      console.error('[Chat API] Auth error or no user found:', authError);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.user.id;
+    const userId = user.id;
     const supabase = getServiceSupabase();
     let activeConversationId = conversationId;
 
@@ -224,6 +225,7 @@ ${documents}
         tools: toolsToUse,
         maxSteps: 5, // Allow the agent to call multiple tools before responding
         onFinish: async ({ text }) => {
+          console.log('[Chat API] AI response finished. Length:', text.length);
           await handleFinish(text);
         }
       });

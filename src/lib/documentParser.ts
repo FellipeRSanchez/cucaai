@@ -1,6 +1,17 @@
-import * as pdfParseModule from 'pdf-parse';
-const pdfParse = (pdfParseModule as any).default || pdfParseModule;
+import { PDFParse } from 'pdf-parse';
 import * as mammoth from 'mammoth';
+import * as path from 'path';
+import { pathToFileURL } from 'url';
+
+// Configuração do worker do PDF.js para ambiente Node.js no Next.js
+if (typeof window === 'undefined') {
+  try {
+    const workerPath = path.resolve(process.cwd(), 'node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs');
+    PDFParse.setWorker(pathToFileURL(workerPath).href);
+  } catch (err) {
+    console.error('Erro ao configurar PDF worker:', err);
+  }
+}
 
 /**
  * Parses a buffer of a document and extracts raw text.
@@ -9,8 +20,9 @@ import * as mammoth from 'mammoth';
 export async function extractTextFromBuffer(buffer: Buffer, mimeType: string): Promise<string> {
   try {
     if (mimeType === 'application/pdf') {
-      const data = await pdfParse(buffer);
-      return data.text;
+      const parser = new PDFParse({ data: buffer });
+      const result = await parser.getText();
+      return result.text;
     } 
     
     if (

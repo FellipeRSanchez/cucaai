@@ -1,4 +1,5 @@
 import { getServiceSupabase } from './supabase';
+import { generateEmbedding } from './embeddings';
 
 interface ContextResult {
   memories: string;
@@ -42,101 +43,82 @@ export async function assembleContext(query: string, userId?: string): Promise<C
       };
     }
 
-    // 1. Fetch Memories (keyword match first, fallback to latest)
+    // 1. Fetch Memories (Keyword for now, vector would be better too)
     let memories: any[] = [];
+    // ... (Keep existing memory logic for now to stay focused on documents)
 
-    if (terms.length > 0) {
-      const orFilter = terms
-        .slice(0, 3)
-        .map((t) => `mem_conteudo.ilike.%${t}%`)
-        .join(',');
+    // 2. Fetch Relevant Document Chunks (Vector Search - The "Real" RAG)
+    let semanticDocs: any[] = [];
+    try {
+      const queryEmbedding = await generateEmbedding(query);
+      const embeddingStr = `[${queryEmbedding.join(',')}]`;
 
-      const { data: matchedMemories, error: memMatchError } = await supabase
-        .schema('cuca')
-        .from('memorias')
-        .select('mem_conteudo, mem_relevancia, mem_criado_em')
-        .eq('mem_usuario_id', userId)
-        .or(orFilter)
-        .order('mem_relevancia', { ascending: false })
-        .order('mem_criado_em', { ascending: false })
-        .limit(8);
+      const { data: matchedChunks, error: chunkError } = await supabase.rpc('match_document_chunks', {
+        query_embedding: embeddingStr,
+        match_threshold: 0.35, // Low threshold to allow some variety
+        match_count: 8,       // More chunks for better context
+        p_usuario_id: userId
+      });
 
-      if (memMatchError) {
-        console.error('Error matching memories by keyword:', memMatchError);
-      } else if (matchedMemories && matchedMemories.length > 0) {
-        memories = matchedMemories;
-      }
-    }
-
-    if (memories.length === 0) {
-      const { data: latestMemories, error: memLatestError } = await supabase
-        .schema('cuca')
-        .from('memorias')
-        .select('mem_conteudo, mem_relevancia, mem_criado_em')
-        .eq('mem_usuario_id', userId)
-        .order('mem_criado_em', { ascending: false })
-        .limit(8);
-
-      if (memLatestError) {
-        console.error('Error loading latest memories:', memLatestError);
+      if (chunkError) {
+        console.error('[RAG] Vector search error (RPC):', chunkError);
+      } else if (matchedChunks && matchedChunks.length > 0) {
+        console.log(`[RAG] Semantic match found ${matchedChunks.length} chunks`);
+        semanticDocs = matchedChunks;
       } else {
-        memories = latestMemories ?? [];
+        console.log('[RAG] No semantic chunks found for query. Try checking your embedding threshold or if embeddings are generated correctly.');
       }
+    } catch (err) {
+      console.error('[RAG] Unexpected error in vector search:', err);
     }
 
-    // 2. Fetch Documents (keyword match first, fallback to latest)
-    let documents: any[] = [];
-
+    // 3. Fallback to Documents metadata/keyword if no chunks found or to complement
+    let keywordDocs: any[] = [];
     if (terms.length > 0) {
       const orFilterDocs = terms
         .slice(0, 3)
         .map((t) => `doc_conteudo.ilike.%${t}%`)
         .join(',');
 
-      const { data: matchedDocs, error: docMatchError } = await supabase
+      const { data: matchedDocs } = await supabase
         .schema('cuca')
         .from('documentos')
         .select('doc_nome, doc_conteudo, doc_criado_em')
         .eq('doc_usuario_id', userId)
         .or(orFilterDocs)
         .order('doc_criado_em', { ascending: false })
-        .limit(5);
-
-      if (docMatchError) {
-        console.error('Error matching documents by keyword:', docMatchError);
-      } else if (matchedDocs && matchedDocs.length > 0) {
-        documents = matchedDocs;
-      }
-    }
-
-    if (documents.length === 0) {
-      const { data: latestDocs, error: docLatestError } = await supabase
-        .schema('cuca')
-        .from('documentos')
-        .select('doc_nome, doc_conteudo, doc_criado_em')
-        .eq('doc_usuario_id', userId)
-        .order('doc_criado_em', { ascending: false })
         .limit(3);
-
-      if (docLatestError) {
-        console.error('Error loading latest documents:', docLatestError);
-      } else {
-        documents = latestDocs ?? [];
-      }
+      
+      keywordDocs = matchedDocs ?? [];
     }
+
+    // 4. Combine results
+    const combinedDocs = new Map();
+    
+    // Add semantic chunks first
+    semanticDocs.forEach(chunk => {
+      const existing = combinedDocs.get(chunk.doc_nome) || [];
+      existing.push(chunk.dch_texto);
+      combinedDocs.set(chunk.doc_nome, existing);
+    });
+
+    // Add keyword snippets if document not already fully covered
+    keywordDocs.forEach(doc => {
+      if (!combinedDocs.has(doc.doc_nome)) {
+        const content = (doc.doc_conteudo ?? '').toString();
+        const snippet = content.length > 1500 ? `${content.slice(0, 1500)}...` : content;
+        combinedDocs.set(doc.doc_nome, [snippet]);
+      }
+    });
+
+    const documentsText = Array.from(combinedDocs.entries())
+      .map(([name, contents]) => {
+        return `Documento [${name}]:\n${contents.join('\n[...]\n')}`;
+      })
+      .join('\n---\n');
 
     const memoriesText = memories
       ? memories.map((m: any) => `- ${m.mem_conteudo}`).join('\n')
-      : '';
-
-    const documentsText = documents
-      ? documents
-        .map((d: any) => {
-          const content = (d.doc_conteudo ?? '').toString().replace(/\s+/g, ' ').trim();
-          const snippet = content.length > 800 ? `${content.slice(0, 800)}...` : content;
-          return `Documento [${d.doc_nome}]: ${snippet}`;
-        })
-        .join('\n---\n')
       : '';
 
     return {
