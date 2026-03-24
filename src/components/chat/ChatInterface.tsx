@@ -2,7 +2,7 @@
 
 import { useChat } from '@ai-sdk/react';
 import { useModelsStore } from '@/store/modelsStore';
-import { Send, Loader2, Sparkles, User, Bot, RefreshCw, Settings, Cpu, Paperclip, X } from 'lucide-react';
+import { Send, Loader2, Sparkles, User, Bot, RefreshCw, Settings, Cpu, Paperclip, X, WifiOff, Copy, Edit2, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useCallback, useState } from 'react';
 import clsx from 'clsx';
 
@@ -10,7 +10,33 @@ import { useUIStore } from '@/store/uiStore';
 import { useChatStore } from '@/store/chatStore';
 import { StructuredBlocksRenderer } from '@/components/chat/blocks/StructuredBlocksRenderer';
 
-// Botões de ação para mensagens
+// ─── Background Job Persistence ────────────────────────────────────────────
+// When the user minimizes/closes the app while the AI is responding, we store
+// the jobId+conversationId in localStorage. On return, we poll until done.
+const PENDING_JOB_KEY = 'cuca_pending_job';
+
+interface PendingJob {
+  jobId: string;
+  conversationId: string;
+}
+
+function savePendingJob(job: PendingJob) {
+  try { localStorage.setItem(PENDING_JOB_KEY, JSON.stringify(job)); } catch {}
+}
+
+function loadPendingJob(): PendingJob | null {
+  try {
+    const raw = localStorage.getItem(PENDING_JOB_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function clearPendingJob() {
+  try { localStorage.removeItem(PENDING_JOB_KEY); } catch {}
+}
+// ───────────────────────────────────────────────────────────────────────────
+
+// Botões de ação para mensagens do assistente
 function MessageActions({ onRegenerate, onSelectModel, isRegenerating }: {
   onRegenerate: () => void;
   onSelectModel: () => void;
@@ -28,11 +54,41 @@ function MessageActions({ onRegenerate, onSelectModel, isRegenerating }: {
   );
 }
 
+// Botões de ação para mensagens do usuário
+function UserMessageActions({ 
+  onEdit, 
+  onResend, 
+  onDelete, 
+  onCopy 
+}: {
+  onEdit: () => void;
+  onResend: () => void;
+  onDelete: () => void;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="user-message-actions absolute -bottom-8 right-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-900 border border-zinc-800 rounded-lg p-1 shadow-md z-10">
+      <button onClick={onEdit} className="p-1.5 text-zinc-400 hover:text-indigo-400 rounded-md hover:bg-zinc-800 transition-colors" title="Editar">
+        <Edit2 size={12} />
+      </button>
+      <button onClick={onCopy} className="p-1.5 text-zinc-400 hover:text-indigo-400 rounded-md hover:bg-zinc-800 transition-colors" title="Copiar">
+        <Copy size={12} />
+      </button>
+      <button onClick={onResend} className="p-1.5 text-zinc-400 hover:text-indigo-400 rounded-md hover:bg-zinc-800 transition-colors" title="Reenviar">
+        <Send size={12} />
+      </button>
+      <div className="w-[1px] h-3 bg-zinc-700 mx-1"></div>
+      <button onClick={onDelete} className="p-1.5 text-zinc-400 hover:text-rose-400 rounded-md hover:bg-zinc-800 transition-colors" title="Excluir">
+        <Trash2 size={12} />
+      </button>
+    </div>
+  );
+}
+
 // Indicador do modelo usado
 function ModelIndicator({ model }: { model?: string }) {
   if (!model) return null;
 
-  // Extrair nome amigável do modelo
   const getModelName = (modelId: string) => {
     const parts = modelId.split('/');
     const modelName = parts[parts.length - 1] || modelId;
@@ -52,13 +108,66 @@ function ModelIndicator({ model }: { model?: string }) {
 export function ChatInterface() {
   const { selectedModel, selectedAgent, openExplorer } = useModelsStore();
   const { webSearchEnabled } = useUIStore();
-  const { currentConversationId, messages: historyMessages, setCurrentConversationId, fetchConversations } = useChatStore();
+  const { currentConversationId, messages: historyMessages, setCurrentConversationId, fetchConversations, fetchMessages, deleteMessage } = useChatStore();
 
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFile, setAttachedFile] = useState<{name: string, id: string} | null>(null);
+
+  // Track the current job for background polling
+  const currentJobRef = useRef<PendingJob | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [isPolling, setIsPolling] = useState(false);
+
+  // ─── Polling Logic ─────────────────────────────────────────────────────
+  const stopPolling = useCallback(() => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    setIsPolling(false);
+    clearPendingJob();
+    currentJobRef.current = null;
+  }, []);
+
+  const startPolling = useCallback((job: PendingJob) => {
+    currentJobRef.current = job;
+    setIsPolling(true);
+    savePendingJob(job);
+
+    let attempts = 0;
+    const maxAttempts = 60; // 2 min max
+
+    pollingIntervalRef.current = setInterval(async () => {
+      attempts++;
+      if (attempts > maxAttempts) {
+        console.warn('[Polling] Max attempts reached, giving up.');
+        stopPolling();
+        return;
+      }
+
+      try {
+        const res = await fetch(`/api/chat/status?jobId=${job.jobId}`);
+        const data = await res.json();
+
+        if (data.status === 'done') {
+          console.log('[Polling] Job done! Reloading messages.');
+          stopPolling();
+          // Reload the conversation messages from the DB (includes the new assistant reply)
+          await fetchMessages(job.conversationId);
+        } else if (data.status === 'error') {
+          console.error('[Polling] Job failed.');
+          stopPolling();
+        }
+        // else: still pending, keep polling
+      } catch (err) {
+        console.error('[Polling] Error checking status:', err);
+      }
+    }, 2000);
+  }, [stopPolling, fetchMessages]);
+  // ───────────────────────────────────────────────────────────────────────
 
   const { messages, input, handleInputChange, handleSubmit, append, isLoading, setMessages, reload } = useChat({
     api: '/api/chat',
@@ -71,20 +180,75 @@ export function ChatInterface() {
     onResponse: (response) => {
       console.log('[ChatInterface] Response received:', response.status);
       const headerId = response.headers.get('x-conversation-id');
+      const headerJobId = response.headers.get('x-job-id');
+
       if (headerId && headerId !== currentConversationId) {
         console.log('[ChatInterface] New conversation ID:', headerId);
         setCurrentConversationId(headerId);
         fetchConversations();
       }
+
+      // Store the job info so we can poll if the app goes to background
+      if (headerJobId && (headerId || currentConversationId)) {
+        const convId = headerId || currentConversationId!;
+        currentJobRef.current = { jobId: headerJobId, conversationId: convId };
+        savePendingJob({ jobId: headerJobId, conversationId: convId });
+      }
+
       setRegeneratingId(null);
     },
     onFinish: (message) => {
       console.log('[ChatInterface] Message finished:', message);
+      // Stream completed normally — no need for polling fallback
+      clearPendingJob();
+      currentJobRef.current = null;
+      stopPolling();
     },
     onError: (error) => {
       console.error('[ChatInterface] Error:', error);
+      clearPendingJob();
+      currentJobRef.current = null;
+      stopPolling();
     }
   });
+
+  // ─── Visibility / Background Detection ─────────────────────────────────
+  useEffect(() => {
+    // When app goes to background while streaming, save the job for polling on return
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Going to background
+        const job = currentJobRef.current;
+        if (job && isLoading) {
+          console.log('[Visibility] App hidden during loading. Saving job for polling:', job);
+          savePendingJob(job);
+        }
+      } else {
+        // Coming back to foreground
+        const pendingJob = loadPendingJob();
+        if (pendingJob && !pollingIntervalRef.current) {
+          console.log('[Visibility] App visible again. Polling for pending job:', pendingJob);
+          startPolling(pendingJob);
+        }
+      }
+    };
+
+    // Check on mount if there's a pending job from a previous session
+    const pendingJobOnMount = loadPendingJob();
+    if (pendingJobOnMount) {
+      console.log('[Mount] Found pending job in localStorage. Starting polling:', pendingJobOnMount);
+      startPolling(pendingJobOnMount);
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+    // We intentionally omit `isLoading` from deps to avoid re-registering the listener on every loading change.
+    // The closure captures the current state correctly via the ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startPolling]);
+  // ───────────────────────────────────────────────────────────────────────
 
   // Sync history messages from store to useChat
   useEffect(() => {
@@ -111,10 +275,8 @@ export function ChatInterface() {
   useEffect(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      // Reset height to auto to get the correct scrollHeight
       textarea.style.height = 'auto';
-      // Calculate new height (max 50vh or 4x original)
-      const maxHeight = Math.min(window.innerHeight * 0.5, 224); // 50vh ou ~4x56px
+      const maxHeight = Math.min(window.innerHeight * 0.5, 224);
       const newHeight = Math.min(textarea.scrollHeight, maxHeight);
       textarea.style.height = `${newHeight}px`;
     }
@@ -122,23 +284,19 @@ export function ChatInterface() {
 
   const handleRegenerate = useCallback(() => {
     if (messages.length >= 2) {
-      // Encontrar a última mensagem do assistente
       const lastAssistantIndex = [...messages].reverse().findIndex(m => m.role === 'assistant');
       if (lastAssistantIndex !== -1) {
         const actualIndex = messages.length - 1 - lastAssistantIndex;
         const assistantMessage = messages[actualIndex];
         setRegeneratingId(assistantMessage.id);
 
-        // Encontrar a última mensagem do usuário antes da resposta do assistente
         const messagesBeforeAssistant = messages.slice(0, actualIndex);
         const lastUserMessage = [...messagesBeforeAssistant].reverse().find(m => m.role === 'user');
 
         if (lastUserMessage) {
-          // Remover a última mensagem do assistente
           const messagesWithoutLast = messages.slice(0, actualIndex);
           setMessages(messagesWithoutLast);
 
-          // Reenviar a última mensagem do usuário usando append
           setTimeout(() => {
             append({
               role: 'user',
@@ -153,6 +311,38 @@ export function ChatInterface() {
   const handleSelectModel = useCallback(() => {
     openExplorer();
   }, [openExplorer]);
+
+  const handleEditUserMessage = useCallback((content: string) => {
+    // Put the content in the input and focus
+    handleInputChange({ target: { value: content } } as React.ChangeEvent<HTMLTextAreaElement>);
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 50);
+  }, [handleInputChange]);
+
+  const handleCopyUserMessage = useCallback((content: string) => {
+    navigator.clipboard.writeText(content).catch(err => {
+      console.error('Failed to copy message:', err);
+    });
+  }, []);
+
+  const handleDeleteUserMessage = useCallback(async (id: string) => {
+    try {
+      // First delete from DB via the store
+      await deleteMessage(id);
+      // Then remove locally from useChat
+      setMessages(messages.filter(m => m.id !== id));
+    } catch (error) {
+      console.error('Failed to delete message:', error);
+    }
+  }, [deleteMessage, messages, setMessages]);
+
+  const handleResendUserMessage = useCallback((content: string) => {
+    append({
+      role: 'user',
+      content: content
+    });
+  }, [append]);
 
   const handleUploadClick = () => {
     fileInputRef.current?.click();
@@ -205,12 +395,19 @@ export function ChatInterface() {
     }
   };
 
+  const showLoadingIndicator = isLoading || isPolling;
+
   return (
     <div className="flex flex-col h-full bg-zinc-950">
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 scroll-smooth custom-scrollbar">
         <div className="max-w-4xl mx-auto space-y-6 relative">
-          {messages.length === 0 ? (
+          {(() => {
+            const visibleMessages = messages.filter(m => !(m.role === 'assistant' && !m.content));
+            
+            return (
+              <>
+          {visibleMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full min-h-[50vh] text-zinc-500 gap-4">
               <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center shadow-lg">
                 <Sparkles className="text-indigo-400" size={32} />
@@ -223,7 +420,7 @@ export function ChatInterface() {
               <div
                 key={m.id}
                 className={clsx(
-                  "flex gap-4 w-full relative group message-container",
+                  "flex gap-4 w-full relative group message-container animate-in fade-in slide-in-from-bottom-4 duration-500",
                   m.role === 'user' ? "justify-end" : "justify-start"
                 )}
               >
@@ -244,6 +441,14 @@ export function ChatInterface() {
                       onRegenerate={handleRegenerate}
                       onSelectModel={handleSelectModel}
                       isRegenerating={regeneratingId === m.id}
+                    />
+                  )}
+                  {m.role === 'user' && (m.id && !m.id.startsWith('temp-')) && (
+                    <UserMessageActions
+                      onEdit={() => handleEditUserMessage(m.content)}
+                      onCopy={() => handleCopyUserMessage(m.content)}
+                      onResend={() => handleResendUserMessage(m.content)}
+                      onDelete={() => handleDeleteUserMessage(m.id)}
                     />
                   )}
                   <div className={clsx(
@@ -273,16 +478,24 @@ export function ChatInterface() {
               </div>
             ))
           )}
-          {isLoading && messages[messages.length - 1]?.role === 'user' && (
+
+          {/* Loading / Polling indicator */}
+          {showLoadingIndicator && visibleMessages[visibleMessages.length - 1]?.role === 'user' && (
             <div className="flex gap-4 w-full justify-start items-center text-zinc-500 animate-in fade-in slide-in-from-bottom-2">
               <div className="w-8 h-8 rounded-full bg-indigo-600/50 flex items-center justify-center shrink-0 animate-pulse">
-                <Bot size={16} className="text-white" />
+                {isPolling ? <WifiOff size={14} className="text-white" /> : <Bot size={16} className="text-white" />}
               </div>
               <Loader2 size={16} className="animate-spin text-indigo-400" />
-              <span className="text-sm font-medium">Cuca está pensando...</span>
+              <span className="text-sm font-medium">
+                {isPolling ? 'Cuca terminou de pensar, carregando...' : 'Cuca está pensando...'}
+              </span>
             </div>
           )}
+
           <div ref={messagesEndRef} />
+              </>
+            );
+          })()}
         </div>
       </div>
 
@@ -343,10 +556,10 @@ export function ChatInterface() {
             
             <button
               type="submit"
-              disabled={isLoading || (!input.trim() && !attachedFile)}
+              disabled={showLoadingIndicator || (!input.trim() && !attachedFile)}
               className="absolute right-2 bottom-2 p-2.5 rounded-xl bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 disabled:hover:bg-indigo-600 transition-all shadow-lg active:scale-95"
             >
-              {isLoading ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+              {showLoadingIndicator ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
             </button>
           </form>
           <div className="text-center mt-3">

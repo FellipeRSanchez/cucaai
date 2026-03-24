@@ -73,7 +73,26 @@ function parseBlocks(text: string): BlockData[] {
 
     // Adicionar texto final restante
     if (remainingText.trim()) {
-        blocks.push({ type: 'text', content: remainingText.trim() });
+        const unclosedXmlCode = remainingText.match(/<code(?:\s+language="([^"]*)")?>([\s\S]*)$/i);
+        const unclosedXmlChart = remainingText.match(/<chart\s+type="(bar|line|pie|area)">([\s\S]*)$/i);
+        const unclosedXmlMatch = remainingText.match(/<(analysis|table|insight|warning|summary)(?:[^>]*)>([\s\S]*)$/i);
+
+        if (unclosedXmlCode) {
+            const preceding = remainingText.substring(0, unclosedXmlCode.index).trim();
+            if (preceding) blocks.push({ type: 'text', content: preceding });
+            blocks.push({ type: 'code', content: unclosedXmlCode[2], language: unclosedXmlCode[1] || 'text' });
+        } else if (unclosedXmlChart) {
+            const preceding = remainingText.substring(0, unclosedXmlChart.index).trim();
+            if (preceding) blocks.push({ type: 'text', content: preceding });
+            const typeExtracted = unclosedXmlChart[1];
+            blocks.push({ type: 'chart', content: unclosedXmlChart[2], chartType: (typeExtracted as any) });
+        } else if (unclosedXmlMatch) {
+            const preceding = remainingText.substring(0, unclosedXmlMatch.index).trim();
+            if (preceding) blocks.push({ type: 'text', content: preceding });
+            blocks.push({ type: unclosedXmlMatch[1].toLowerCase() as any, content: unclosedXmlMatch[2] });
+        } else {
+            blocks.push({ type: 'text', content: remainingText.trim() });
+        }
     }
 
     // Se não encontrou blocos XML-style, tentar markdown-style
@@ -122,7 +141,29 @@ function parseMarkdownBlocks(text: string): BlockData[] {
     }
 
     if (remainingText.trim()) {
-        blocks.push({ type: 'text', content: remainingText.trim() });
+        const unclosedMd = remainingText.match(/```([a-z0-9\-:]+)?\n([\s\S]*)$/i);
+        if (unclosedMd) {
+            const preceding = remainingText.substring(0, unclosedMd.index).trim();
+            if (preceding) blocks.push({ type: 'text', content: preceding });
+            
+            const typeStr = (unclosedMd[1] || '').toLowerCase();
+            let type: BlockData['type'] = 'code';
+            let language = 'text';
+            let chartType: any = undefined;
+
+            if (typeStr === 'analysis' || typeStr === 'table' || typeStr === 'insight' || typeStr === 'warning' || typeStr === 'summary') {
+                type = typeStr as any;
+            } else if (typeStr.startsWith('chart:')) {
+                type = 'chart';
+                chartType = typeStr.split(':')[1] || 'line';
+            } else {
+                language = typeStr || 'text';
+            }
+
+            blocks.push({ type, content: unclosedMd[2], language, chartType });
+        } else {
+            blocks.push({ type: 'text', content: remainingText.trim() });
+        }
     }
 
     return blocks;

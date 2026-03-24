@@ -29,6 +29,7 @@ interface ChatState {
   fetchConversations: () => Promise<void>;
   fetchMessages: (conversationId: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
+  deleteMessage: (id: string) => Promise<void>;
   resetChat: () => void;
 }
 
@@ -79,6 +80,21 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages: currentConversationId === id ? [] : get().messages
       });
     } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  deleteMessage: async (id: string) => {
+    try {
+      const res = await fetch(`/api/messages?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Falha ao deletar mensagem');
+
+      const { messages } = get();
+      set({
+        messages: messages.filter(m => m.men_id !== id)
+      });
+    } catch (err: any) {
+      console.error(err);
       set({ error: err.message });
     }
   },
