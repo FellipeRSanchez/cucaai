@@ -209,12 +209,13 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
       const data = await response.json();
       const models = Array.isArray(data) ? data : [];
 
-      // Selecionar automaticamente o melhor modelo gratuito após refresh
-      const bestFreeModel = getBestFreeModel(models);
+      const currentSelected = get().selectedModel;
+      const stillExists = models.find(m => m.id === currentSelected);
+      const newSelectedModel = stillExists ? currentSelected : getBestFreeModel(models);
 
       set({
         models,
-        selectedModel: bestFreeModel,
+        selectedModel: newSelectedModel,
         isLoading: false
       });
     } catch (err: any) {

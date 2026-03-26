@@ -2,7 +2,7 @@
 
 import { useChat } from '@ai-sdk/react';
 import { useModelsStore } from '@/store/modelsStore';
-import { Send, Loader2, Sparkles, User, Bot, RefreshCw, Settings, Cpu, Paperclip, X, WifiOff, Copy, Edit2, Trash2 } from 'lucide-react';
+import { Send, Loader2, Sparkles, User, Bot, RefreshCw, Settings, Cpu, Paperclip, X, WifiOff, Copy, Edit2, Trash2, Globe } from 'lucide-react';
 import { useEffect, useRef, useCallback, useState } from 'react';
 import clsx from 'clsx';
 
@@ -67,7 +67,11 @@ function UserMessageActions({
   onCopy: () => void;
 }) {
   return (
-    <div className="user-message-actions absolute -bottom-8 right-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity bg-zinc-900 border border-zinc-800 rounded-lg p-1 shadow-md z-10">
+    <div className={clsx(
+      "user-message-actions absolute -bottom-8 right-0 flex items-center gap-1 transition-all bg-zinc-900 border border-zinc-800 rounded-lg p-1 shadow-md z-10",
+      "opacity-0 group-hover:opacity-100 sm:opacity-0", // Desktop hover
+      "max-sm:opacity-100 max-sm:-bottom-9" // Mobile always visible and a bit lower
+    )}>
       <button onClick={onEdit} className="p-1.5 text-zinc-400 hover:text-indigo-400 rounded-md hover:bg-zinc-800 transition-colors" title="Editar">
         <Edit2 size={12} />
       </button>
@@ -82,6 +86,13 @@ function UserMessageActions({
         <Trash2 size={12} />
       </button>
     </div>
+  );
+}
+
+// Cursor de digitação para o streaming
+function StreamingCursor() {
+  return (
+    <span className="inline-block w-1.5 h-4 ml-1 bg-indigo-500 animate-pulse align-middle" />
   );
 }
 
@@ -107,7 +118,7 @@ function ModelIndicator({ model }: { model?: string }) {
 
 export function ChatInterface() {
   const { selectedModel, selectedAgent, openExplorer } = useModelsStore();
-  const { webSearchEnabled } = useUIStore();
+  const { webSearchEnabled, setWebSearchEnabled } = useUIStore();
   const { currentConversationId, messages: historyMessages, setCurrentConversationId, fetchConversations, fetchMessages, deleteMessage } = useChatStore();
 
   const [regeneratingId, setRegeneratingId] = useState<string | null>(null);
@@ -458,7 +469,12 @@ export function ChatInterface() {
                       : ""
                   )}>
                     {m.role === 'assistant' ? (
-                      <StructuredBlocksRenderer content={m.content || ''} />
+                      <div className="relative">
+                        <StructuredBlocksRenderer content={m.content || ''} />
+                        {isLoading && m.id === messages[messages.length - 1]?.id && (
+                          <StreamingCursor />
+                        )}
+                      </div>
                     ) : (
                       <div className="text-zinc-200 whitespace-pre-wrap break-words">
                         {m.content}
@@ -533,19 +549,35 @@ export function ChatInterface() {
               accept=".pdf,.docx,.txt"
             />
             
-            <button
-              type="button"
-              onClick={handleUploadClick}
-              disabled={isUploading}
-              className="absolute left-2 bottom-2 p-2.5 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
-              title="Anexar documento"
-            >
-              {isUploading ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
-            </button>
+            <div className="absolute left-2 bottom-2 flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleUploadClick}
+                disabled={isUploading}
+                className="p-2.5 rounded-xl text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                title="Anexar documento"
+              >
+                {isUploading ? <Loader2 size={18} className="animate-spin" /> : <Paperclip size={18} />}
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => setWebSearchEnabled(!webSearchEnabled)}
+                className={clsx(
+                  "p-2.5 rounded-xl transition-colors",
+                  webSearchEnabled 
+                    ? "text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20" 
+                    : "text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
+                )}
+                title={webSearchEnabled ? "Busca Web: Ativada" : "Busca Web: Desativada"}
+              >
+                <Globe size={18} />
+              </button>
+            </div>
 
             <textarea
               ref={textareaRef}
-              className="w-full min-h-[56px] bg-transparent text-zinc-100 placeholder-zinc-500 py-4 pl-14 pr-14 resize-none outline-none text-sm transition-all duration-200"
+              className="w-full min-h-[56px] bg-transparent text-zinc-100 placeholder-zinc-500 py-4 pl-24 pr-14 resize-none outline-none text-sm transition-all duration-200"
               placeholder="Digite sua mensagem (Shift + Enter para nova linha)..."
               value={input}
               onChange={handleInputChange}

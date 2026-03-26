@@ -35,7 +35,7 @@ export function Header() {
     openExplorer, getSelectedModelData, isLoading
   } = useModelsStore();
   const { selectedAgent, setSelectedAgent } = useModelsStore();
-  const { webSearchEnabled, setWebSearchEnabled, isMobileMenuOpen, setMobileMenuOpen } = useUIStore();
+  const { isMobileMenuOpen, setMobileMenuOpen } = useUIStore();
 
   const router = useRouter();
 
@@ -120,12 +120,6 @@ export function Header() {
 
       <div className="flex items-center gap-2">
 
-        <HeaderAction
-          icon={<Globe size={18} />}
-          tooltip="Busca Web"
-          active={webSearchEnabled}
-          onClick={() => setWebSearchEnabled(!webSearchEnabled)}
-        />
         <HeaderAction
           icon={<Wrench size={18} />}
           tooltip="Configurar Ferramentas"

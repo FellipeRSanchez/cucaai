@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useModelsStore } from './modelsStore';
 
 export interface Conversation {
   con_id: string;
@@ -63,6 +64,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       if (!res.ok) throw new Error('Falha ao buscar mensagens');
       const data = await res.json();
       set({ messages: data, isLoading: false, currentConversationId: conversationId });
+
+      // Restaurar o modelo usado anteriormente nesta conversa
+      const lastAssistantMsg = [...data].reverse().find((m: any) => m.men_papel === 'assistant' && m.men_modelo);
+      if (lastAssistantMsg && lastAssistantMsg.men_modelo) {
+        useModelsStore.getState().setSelectedModel(lastAssistantMsg.men_modelo);
+      }
     } catch (err: any) {
       set({ error: err.message, isLoading: false });
     }

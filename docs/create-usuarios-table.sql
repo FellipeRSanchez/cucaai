@@ -4,12 +4,6 @@
 -- Execute este arquivo no Supabase SQL Editor
 -- para criar a tabela usuarios necessária para o cadastro
 
-CREATE TABLE IF NOT EXISTS public.usuarios (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  nome TEXT NOT NULL,
-  email TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
-);
 
 -- Habilitar RLS
 ALTER TABLE public.usuarios ENABLE ROW LEVEL SECURITY;
