@@ -125,7 +125,7 @@ export function ChatInterface() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [attachedFile, setAttachedFile] = useState<{name: string, id: string} | null>(null);
+  const [attachedFile, setAttachedFile] = useState<{name: string, id?: string, url?: string, type: 'document' | 'image'} | null>(null);
 
   // Track the current job for background polling
   const currentJobRef = useRef<PendingJob | null>(null);
@@ -142,6 +142,33 @@ export function ChatInterface() {
     clearPendingJob();
     currentJobRef.current = null;
   }, []);
+
+  // Renderer customizado para mensagens do usuário para mostrar imagens
+  function renderUserMessage(content: string) {
+    const parts = content.split(/(!\[.*?\]\(.*?\)|\[Arquivo Anexado: .*?\])/g);
+    return parts.map((part, index) => {
+      const imgMatch = part.match(/!\[(.*?)\]\((.*?)\)/);
+      if (imgMatch) {
+         return (
+           <div key={index} className="mt-2 mb-1 rounded-xl overflow-hidden border border-white/10 max-w-sm hover:opacity-90 transition-opacity">
+             <a href={imgMatch[2]} target="_blank" rel="noopener noreferrer">
+               <img src={imgMatch[2]} alt={imgMatch[1]} className="w-full h-auto max-h-60 object-cover" />
+             </a>
+           </div>
+         );
+      }
+      const docMatch = part.match(/\[Arquivo Anexado: (.*?)\]/);
+      if (docMatch) {
+         return (
+          <div key={index} className="mt-2 mb-1 flex items-center gap-2 bg-white/10 text-white text-xs px-3 py-2 rounded-lg border border-white/20 w-fit">
+            <Paperclip size={14} />
+            <span>{docMatch[1]}</span>
+          </div>
+        );
+      }
+      return <span key={index}>{part}</span>;
+    });
+  }
 
   const startPolling = useCallback((job: PendingJob) => {
     currentJobRef.current = job;
@@ -367,24 +394,32 @@ export function ChatInterface() {
     const formData = new FormData();
     formData.append('file', file);
 
+    const isImage = file.type.startsWith('image/');
+    const apiEndpoint = isImage ? '/api/images/upload' : '/api/documents/upload';
+
     try {
-      const res = await fetch('/api/documents/upload', {
+      const res = await fetch(apiEndpoint, {
         method: 'POST',
         body: formData,
       });
 
       if (res.ok) {
         const data = await res.json();
-        setAttachedFile({ name: file.name, id: data.documentId });
+        if (isImage) {
+          setAttachedFile({ name: file.name, url: data.imageUrl, type: 'image' });
+        } else {
+          setAttachedFile({ name: file.name, id: data.documentId, type: 'document' });
+        }
       } else {
         const err = await res.json();
         alert(`Erro: ${err.error}\nDetalhes: ${err.details || ''}`);
       }
     } catch (error) {
       console.error('Upload error:', error);
-      alert('Erro ao enviar documento.');
+      alert('Erro ao enviar arquivo.');
     } finally {
-      setIsUploading(false);
+      setIsUploading(true); // Manter true por um momento para o indicador
+      setTimeout(() => setIsUploading(false), 500);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -392,8 +427,22 @@ export function ChatInterface() {
   const handleFormSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
     if (input.trim() || attachedFile) {
-      handleSubmit(e as any);
+      let finalContent = input.trim();
+      
+      if (attachedFile?.type === 'image' && attachedFile.url) {
+        finalContent = `${finalContent}\n\n![${attachedFile.name}](${attachedFile.url})`.trim();
+      } else if (attachedFile?.type === 'document') {
+        finalContent = `${finalContent}\n\n[Arquivo Anexado: ${attachedFile.name}]`.trim();
+      }
+
+      append(
+        { role: 'user', content: finalContent },
+        { body: { attachedFile } }
+      );
+      
+      handleInputChange({ target: { value: '' } } as any);
       setTimeout(() => setAttachedFile(null), 100);
+      if (textareaRef.current) textareaRef.current.style.height = 'auto';
     }
   };
 
@@ -477,7 +526,7 @@ export function ChatInterface() {
                       </div>
                     ) : (
                       <div className="text-zinc-200 whitespace-pre-wrap break-words">
-                        {m.content}
+                        {renderUserMessage(m.content)}
                       </div>
                     )}
                   </div>
@@ -523,7 +572,13 @@ export function ChatInterface() {
           {attachedFile && (
             <div className="mb-2 flex items-center gap-2">
               <div className="flex items-center gap-2 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-xs px-3 py-1.5 rounded-full">
-                <Paperclip size={12} className="shrink-0" />
+                {attachedFile.type === 'image' && attachedFile.url ? (
+                  <div className="w-8 h-8 rounded-md overflow-hidden border border-indigo-500/30">
+                    <img src={attachedFile.url} alt="Preview" className="w-full h-full object-cover" />
+                  </div>
+                ) : (
+                  <Paperclip size={12} className="shrink-0" />
+                )}
                 <span className="truncate max-w-[200px]">{attachedFile.name} {isUploading ? '...' : ''}</span>
                 {!isUploading && (
                   <button 
@@ -546,7 +601,7 @@ export function ChatInterface() {
               ref={fileInputRef}
               onChange={handleFileChange}
               className="hidden"
-              accept=".pdf,.docx,.txt"
+              accept=".pdf,.docx,.txt,image/*"
             />
             
             <div className="absolute left-2 bottom-2 flex items-center gap-1">

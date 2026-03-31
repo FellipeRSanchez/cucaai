@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
     console.log('[Chat API] Received request:', body);
-    const { messages, selectedModel, selectedAgent, webSearchEnabled, conversationId } = body;
+    const { messages, selectedModel, selectedAgent, webSearchEnabled, conversationId, attachedFile } = body;
 
     // Get Auth Session
     const cookieStore = await cookies();
@@ -87,13 +87,17 @@ Sempre em português, a menos que solicitado o contrário.`;
     const systemPrompt = `${basePrompt}\n\nPERFIL ATUAL: ${agentProfile.name}\n${agentProfile.systemPrompt}`;
 
     const lastMessage = messages[messages.length - 1];
+    const rawTextQuery = lastMessage?.content || '';
+    
+    // Clean markdown attachments from the query for RAG and Cache
+    const textQuery = rawTextQuery.replace(/!\[.*?\]\(.*?\)|\[Arquivo Anexado: .*?\]/g, '').trim();
+    
     const isUserMessage = lastMessage?.role === 'user';
     const modelToUse = selectedModel || 'openai/chatgpt-4o-latest';
 
     // 1. Semantic Cache Check
-    if (isUserMessage) {
-      const userQuery = lastMessage.content;
-      const cachedResponse = await checkSemanticCache(userQuery).catch(() => null);
+    if (isUserMessage && typeof textQuery === 'string') {
+      const cachedResponse = await checkSemanticCache(textQuery).catch(() => null);
       if (cachedResponse) console.log(`[Cache Hit] Similarity: ${cachedResponse.similaridade}`);
     }
 
@@ -105,7 +109,7 @@ Sempre em português, a menos que solicitado o contrário.`;
           .from('conversas')
           .insert({
             con_usuario_id: userId,
-            con_titulo: lastMessage.content.substring(0, 50) + (lastMessage.content.length > 50 ? '...' : '')
+            con_titulo: textQuery.substring(0, 50) + (textQuery.length > 50 ? '...' : '')
           })
           .select()
           .single();
@@ -114,6 +118,9 @@ Sempre em português, a menos que solicitado o contrário.`;
         else activeConversationId = newConv.con_id;
       }
 
+      // The client already appends the markdown to the content, so we just use rawTextQuery
+      let contentToPersist = rawTextQuery;
+
       if (activeConversationId) {
         await supabase
           .schema('cuca')
@@ -121,14 +128,13 @@ Sempre em português, a menos que solicitado o contrário.`;
           .insert({
             men_conversa_id: activeConversationId,
             men_papel: 'user',
-            men_conteudo: lastMessage.content
+            men_conteudo: contentToPersist
           });
       }
     }
 
     // 3. Assemble Context (RAG)
-    const userQuery = lastMessage.content;
-    const { memories, documents } = await assembleContext(userQuery, userId);
+    const { memories, documents } = await assembleContext(textQuery, userId);
 
     const ragContext = `
 ---
@@ -193,15 +199,48 @@ ${documents}
         }
 
         if (isUserMessage && text) {
-          await saveToSemanticCache(lastMessage.content, text, modelToUse).catch(() => {});
+          await saveToSemanticCache(textQuery, text, modelToUse).catch(() => {});
           runMemoryManager(messages, text, userId).catch(() => {});
-          runSelfReflection(lastMessage.content, text).catch(() => {});
-          runKnowledgeGraphManager(lastMessage.content, text).catch(() => {});
+          runSelfReflection(textQuery, text).catch(() => {});
+          runKnowledgeGraphManager(textQuery, text).catch(() => {});
         }
       } catch (err: any) {
         console.error('[Chat API] Exception in handleFinish:', err.message);
       }
     };
+
+    // 6.5 Final Message Format for AI (Vision support) - Do it at the last possible moment
+    if (isUserMessage && attachedFile?.type === 'image' && attachedFile.url) {
+      try {
+        console.log('[Chat API] Fetching image for vision processing:', attachedFile.url);
+        const imageRes = await fetch(attachedFile.url);
+        if (!imageRes.ok) throw new Error(`HTTP error ${imageRes.status}`);
+        
+        const imageBuffer = await imageRes.arrayBuffer();
+        const imageUint8Array = new Uint8Array(imageBuffer);
+        
+        // Clean up any existing parts to avoid conflicts
+        if ((messages[messages.length - 1] as any).parts) {
+          delete (messages[messages.length - 1] as any).parts;
+        }
+
+        messages[messages.length - 1].content = [
+          { type: 'text', text: textQuery },
+          { 
+            type: 'image', 
+            image: imageUint8Array,
+            mimeType: attachedFile.name.endsWith('.png') ? 'image/png' : 'image/jpeg'
+          }
+        ];
+        console.log('[Chat API] Using Uint8Array with MIME type for image recognition');
+      } catch (err: any) {
+        console.error('[Chat API] Could not fetch image for vision, using URL fallback:', err.message);
+        messages[messages.length - 1].content = [
+          { type: 'text', text: textQuery },
+          { type: 'image', image: attachedFile.url }
+        ];
+      }
+    }
 
     let result;
     const streamOptions = {

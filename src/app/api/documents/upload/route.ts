@@ -52,6 +52,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
+    if (file.type.startsWith('image/')) {
+      console.log('[Upload API] Image file detected, rejecting from document upload');
+      return NextResponse.json({ 
+        error: 'Este endpoint é apenas para documentos (PDF, DOCX, TXT).',
+        details: 'Fotos devem ser enviadas diretamente no chat para suporte a visão.'
+      }, { status: 400 });
+    }
+
     console.log(`[Upload API] Processing file: ${file.name} (${file.type}, ${file.size} bytes)`);
     const buffer = Buffer.from(await file.arrayBuffer());
     
