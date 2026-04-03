@@ -28,7 +28,7 @@ function generateJobId(): string {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    console.log('[Chat API] Received request:', body);
+    console.log('[Chat API] Received request with model:', body.selectedModel);
     const { messages, selectedModel, selectedAgent, webSearchEnabled, conversationId, attachedFile } = body;
 
     // Get Auth Session
@@ -72,7 +72,11 @@ export async function POST(req: Request) {
       modelIdLower.includes('llama-3.2-3b') ||
       modelIdLower.includes('mistral-small') ||
       modelIdLower.includes('mistral-small-3.1') ||
-      modelIdLower.includes('hunter-alpha'); // Hunter-alpha seems problematic with tools in this env
+      modelIdLower.includes('hunter-alpha') || // Hunter-alpha seems problematic with tools in this env
+      modelIdLower.includes('gpt-5.4') ||      // GPT-5.4 family doesn't support tool calling on OpenRouter
+      modelIdLower.includes('gpt-5.4-pro') ||
+      modelIdLower.includes('gpt-5.4-nano') ||
+      modelIdLower.includes('gpt-5.4-mini');
 
     const toolsToUse = disableToolsForModel ? undefined : tools;
 
@@ -270,6 +274,15 @@ ${documents}
     const originalStream = sdkResponse.body as ReadableStream;
     let clientDisconnected = false;
 
+    const encoder = new TextEncoder();
+
+    // Helper to build an AI SDK data-stream friendly text response
+    const buildFriendlyErrorChunks = (message: string): Uint8Array => {
+      const textChunk = `0:${JSON.stringify(message)}\n`;
+      const finishChunk = `d:{"finishReason":"stop","usage":{"promptTokens":0,"completionTokens":0}}\n`;
+      return encoder.encode(textChunk + finishChunk);
+    };
+
     const proxyStream = new ReadableStream({
       start(controller) {
         const reader = originalStream.getReader();
@@ -288,6 +301,31 @@ ${documents}
               
               if (!clientDisconnected) {
                 try {
+                  if (value) {
+                    // Decode and inspect the chunk for error signals (3:"...") from OpenRouter
+                    const text = new TextDecoder().decode(value);
+                    
+                    if (text.trim().startsWith('3:')) {
+                      // This is an error chunk from OpenRouter/model.
+                      console.error(`[Chat API] OpenRouter stream error for model "${modelToUse}": ${text.trim()}`);
+
+                      // Build a user-friendly assistant message instead of forwarding the raw error
+                      const friendlyMessage = `⚠️ **O modelo \`${modelToUse}\` não conseguiu processar sua mensagem.**\n\nPossíveis causas:\n- **Saldo insuficiente** no OpenRouter para este modelo\n- Modelo temporariamente indisponível ou fora do ar\n- Limite de requisições atingido\n\nSugestões:\n- Recarregue seus créditos em [openrouter.ai/settings/credits](https://openrouter.ai/settings/credits)\n- Escolha um modelo diferente (como **GPT-4o**, **Claude** ou um modelo gratuito)`;
+
+                      // Save the friendly message to the DB placeholder
+                      if (assistantPlaceholderId) {
+                        supabase.schema('cuca').from('mensagens')
+                          .update({ men_status: 'done', men_conteudo: friendlyMessage })
+                          .eq('men_id', assistantPlaceholderId)
+                          .then(() => {});
+                      }
+
+                      // Enqueue friendly text chunks instead of the raw error
+                      try { controller.enqueue(buildFriendlyErrorChunks(friendlyMessage)); } catch(e) {}
+                      try { controller.close(); } catch(e) {}
+                      return; // stop the pump — we're done
+                    }
+                  }
                   controller.enqueue(value);
                 } catch (err) {
                   // If enqueue fails (e.g. client closed the connection),
@@ -321,6 +359,7 @@ ${documents}
         console.log('[after()] Stream generation successfully finalized in background');
       } catch (err: any) {
         console.error('[after()] Background process error:', err.message);
+        console.error('[after()] Full error details:', JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
         if (assistantPlaceholderId) {
           await supabase
             .schema('cuca')

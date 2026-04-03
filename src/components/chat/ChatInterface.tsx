@@ -244,6 +244,15 @@ export function ChatInterface() {
     },
     onError: (error) => {
       console.error('[ChatInterface] Error:', error);
+      if (error instanceof Error) {
+        console.error('[ChatInterface] Error Message:', error.message);
+        console.error('[ChatInterface] Error Stack:', error.stack);
+        if ((error as any).cause) {
+          console.error('[ChatInterface] Error Cause:', JSON.stringify((error as any).cause, null, 2));
+        }
+      } else {
+        console.error('[ChatInterface] Raw Error Object:', JSON.stringify(error, null, 2));
+      }
       clearPendingJob();
       currentJobRef.current = null;
       stopPolling();
