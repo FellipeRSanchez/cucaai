@@ -77,7 +77,7 @@ export function Header() {
           onClick={openExplorer}
           disabled={isLoading}
           className={clsx(
-            'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all max-w-[220px]',
+            'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all max-w-[140px] sm:max-w-[220px]',
             'bg-zinc-900 border-zinc-800 hover:border-indigo-500/50 hover:bg-zinc-800/80',
             'focus:outline-none focus:ring-1 focus:ring-indigo-500/50',
             'disabled:opacity-50 disabled:cursor-wait shadow-sm',
@@ -101,11 +101,11 @@ export function Header() {
         </button>
 
         {/* Agent Selector */}
-        <div className="relative group hidden sm:block">
+        <div className="relative group">
           <select
             value={selectedAgent}
             onChange={(e) => setSelectedAgent(e.target.value as AgentRole)}
-            className="appearance-none flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-md px-3 py-1.5 pl-8 hover:border-zinc-700 outline-none focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer shadow-sm w-[160px]"
+            className="appearance-none flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-md px-3 py-1.5 pl-8 hover:border-zinc-700 outline-none focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer shadow-sm w-[110px] sm:w-[160px] truncate"
           >
             {Object.values(AGENT_PROFILES).map((agent) => (
               <option key={agent.id} value={agent.id}>
