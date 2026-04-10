@@ -30,6 +30,7 @@ interface ChatState {
   fetchConversations: () => Promise<void>;
   fetchMessages: (conversationId: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
+  updateConversationTitle: (id: string, newTitle: string) => Promise<void>;
   deleteMessage: (id: string) => Promise<void>;
   resetChat: () => void;
 }
@@ -85,6 +86,26 @@ export const useChatStore = create<ChatState>((set, get) => ({
         conversations: conversations.filter(c => c.con_id !== id),
         currentConversationId: currentConversationId === id ? null : currentConversationId,
         messages: currentConversationId === id ? [] : get().messages
+      });
+    } catch (err: any) {
+      set({ error: err.message });
+    }
+  },
+
+  updateConversationTitle: async (id: string, newTitle: string) => {
+    try {
+      const res = await fetch('/api/conversations', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, title: newTitle }),
+      });
+      if (!res.ok) throw new Error('Falha ao renomear conversa');
+
+      const { conversations } = get();
+      set({
+        conversations: conversations.map(c => 
+          c.con_id === id ? { ...c, con_titulo: newTitle } : c
+        )
       });
     } catch (err: any) {
       set({ error: err.message });

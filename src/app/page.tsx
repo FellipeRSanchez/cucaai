@@ -31,7 +31,7 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-zinc-950 overflow-hidden">
+    <div className="flex h-[100dvh] w-full bg-zinc-950 overflow-hidden">
       <Sidebar />
       <div className="flex flex-col flex-1 h-full min-w-0">
         <Header />

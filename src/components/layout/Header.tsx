@@ -2,7 +2,8 @@
 
 import { useModelsStore } from '@/store/modelsStore';
 import { useEffect, useRef, useState } from 'react';
-import { Bot, Paperclip, Globe, Wrench, ChevronDown, LogOut, Loader2, ChevronRight, Menu, X } from 'lucide-react';
+import { useChatStore } from '@/store/chatStore';
+import { Bot, Paperclip, Globe, Wrench, ChevronDown, LogOut, Loader2, ChevronRight, Menu, X, Edit2, Check } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import clsx from 'clsx';
@@ -36,8 +37,15 @@ export function Header() {
   } = useModelsStore();
   const { selectedAgent, setSelectedAgent } = useModelsStore();
   const { isMobileMenuOpen, setMobileMenuOpen } = useUIStore();
+  const { currentConversationId, conversations, updateConversationTitle } = useChatStore();
 
   const router = useRouter();
+
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editTitleValue, setEditTitleValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const currentChat = conversations.find(c => c.con_id === currentConversationId);
 
   useEffect(() => {
     fetchModels();
@@ -52,6 +60,12 @@ export function Header() {
     return () => clearInterval(interval);
   }, [refreshModels]);
 
+  useEffect(() => {
+    if (isEditingTitle && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [isEditingTitle]);
+
   const selectedModelData = getSelectedModelData();
 
   const handleLogout = async () => {
@@ -59,10 +73,32 @@ export function Header() {
     router.push('/login');
   };
 
+  const startEditing = () => {
+    if (currentChat) {
+      setEditTitleValue(currentChat.con_titulo);
+      setIsEditingTitle(true);
+    }
+  };
+
+  const saveTitle = async () => {
+    if (currentConversationId && editTitleValue.trim() && editTitleValue.trim() !== currentChat?.con_titulo) {
+      await updateConversationTitle(currentConversationId, editTitleValue.trim());
+    }
+    setIsEditingTitle(false);
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      saveTitle();
+    } else if (e.key === 'Escape') {
+      setIsEditingTitle(false);
+    }
+  };
+
 
   return (
     <header className="h-14 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between px-4 shrink-0 shadow-sm z-10 w-full relative">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
         {/* Mobile Menu Button */}
         <button
           onClick={() => setMobileMenuOpen(!isMobileMenuOpen)}
@@ -77,7 +113,7 @@ export function Header() {
           onClick={openExplorer}
           disabled={isLoading}
           className={clsx(
-            'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all max-w-[140px] sm:max-w-[220px]',
+            'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all max-w-[120px] sm:max-w-[220px]',
             'bg-zinc-900 border-zinc-800 hover:border-indigo-500/50 hover:bg-zinc-800/80',
             'focus:outline-none focus:ring-1 focus:ring-indigo-500/50',
             'disabled:opacity-50 disabled:cursor-wait shadow-sm',
@@ -101,7 +137,7 @@ export function Header() {
         </button>
 
         {/* Agent Selector */}
-        <div className="relative group">
+        <div className="relative group hidden sm:block">
           <select
             value={selectedAgent}
             onChange={(e) => setSelectedAgent(e.target.value as AgentRole)}
@@ -118,7 +154,45 @@ export function Header() {
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Center section: Chat Title */}
+      <div className="hidden md:flex flex-1 items-center justify-center min-w-0 px-4">
+        {currentChat && (
+          <div className="group flex items-center max-w-[300px] gap-2">
+            {isEditingTitle ? (
+              <div className="flex items-center w-full relative">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={editTitleValue}
+                  onChange={(e) => setEditTitleValue(e.target.value)}
+                  onBlur={saveTitle}
+                  onKeyDown={onKeyDown}
+                  className="w-full bg-zinc-900 border border-indigo-500/50 text-zinc-100 text-sm rounded-md px-3 py-1 outline-none focus:ring-1 focus:ring-indigo-500 pr-8 shadow-sm"
+                />
+                <button 
+                  onMouseDown={(e) => { e.preventDefault(); saveTitle(); }}
+                  className="absolute right-2 text-zinc-400 hover:text-indigo-400"
+                >
+                  <Check size={14} />
+                </button>
+              </div>
+            ) : (
+              <div 
+                className="flex items-center gap-2 cursor-pointer p-1.5 rounded-md hover:bg-zinc-800/50 transition-colors w-full"
+                onClick={startEditing}
+                title="Renomear chat"
+              >
+                <div className="font-semibold text-sm text-zinc-300 truncate text-center flex-1">
+                  {currentChat.con_titulo}
+                </div>
+                <Edit2 size={12} className="text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-end gap-2 flex-1 sm:flex-none">
 
         <HeaderAction
           icon={<Wrench size={18} />}
@@ -126,7 +200,7 @@ export function Header() {
           onClick={() => alert('Configurações de ferramentas em breve!')}
         />
 
-        <div className="w-px h-6 bg-zinc-800 mx-1" />
+        <div className="w-px h-6 bg-zinc-800 mx-1 hidden sm:block" />
 
         <HeaderAction
           icon={<LogOut size={18} />}
