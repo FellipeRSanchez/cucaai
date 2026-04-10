@@ -315,8 +315,8 @@ export function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    messagesEndRef.current?.scrollIntoView({ behavior: isLoading ? 'auto' : 'smooth' });
+  }, [messages, isLoading]);
 
   // Auto-resize do textarea
   useEffect(() => {
@@ -427,7 +427,7 @@ export function ChatInterface() {
       console.error('Upload error:', error);
       alert('Erro ao enviar arquivo.');
     } finally {
-      setIsUploading(true); // Manter true por um momento para o indicador
+      setIsUploading(false);
       setTimeout(() => setIsUploading(false), 500);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
@@ -485,7 +485,7 @@ export function ChatInterface() {
               <p className="text-xs -mt-2 text-zinc-600">Selecione um agente ou comece um novo papo.</p>
             </div>
           ) : (
-            messages.map((m) => (
+            visibleMessages.map((m) => (
               <div
                 key={m.id}
                 className={clsx(

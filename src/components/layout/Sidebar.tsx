@@ -42,6 +42,7 @@ export function Sidebar() {
   const handleSelectConversation = (id: string) => {
     fetchMessages(id);
     setActiveView('CHAT');
+    setMobileMenuOpen(false);
   };
 
   return (

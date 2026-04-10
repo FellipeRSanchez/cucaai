@@ -45,6 +45,7 @@ export async function GET(req: Request) {
         .from('mensagens')
         .select('*')
         .eq('men_conversa_id', conversationId)
+        .neq('men_conteudo', '')
         .order('men_criado_em', { ascending: true });
 
       if (error) throw error;

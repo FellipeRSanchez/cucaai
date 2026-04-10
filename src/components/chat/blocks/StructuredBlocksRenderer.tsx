@@ -1,4 +1,4 @@
-import { ReactElement } from 'react';
+import { ReactElement, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
@@ -18,22 +18,22 @@ interface StructuredBlocksRendererProps {
 function renderBlock(block: BlockData): ReactElement | null {
     switch (block.type) {
         case 'analysis':
-            return <AnalysisBlock key={`block-${Date.now()}`} content={block.content} />;
+            return <AnalysisBlock content={block.content} />;
         case 'table':
-            return <TableBlock key={`block-${Date.now()}`} content={block.content} />;
+            return <TableBlock content={block.content} />;
         case 'code':
-            return <CodeBlockEnhanced key={`block-${Date.now()}`} content={block.content} language={block.language} />;
+            return <CodeBlockEnhanced content={block.content} language={block.language} />;
         case 'chart':
-            return <ChartBlock key={`block-${Date.now()}`} content={block.content} chartType={block.chartType || 'bar'} />;
+            return <ChartBlock content={block.content} chartType={block.chartType || 'bar'} />;
         case 'insight':
-            return <InsightBlock key={`block-${Date.now()}`} content={block.content} />;
+            return <InsightBlock content={block.content} />;
         case 'warning':
-            return <WarningBlock key={`block-${Date.now()}`} content={block.content} />;
+            return <WarningBlock content={block.content} />;
         case 'summary':
-            return <SummaryBlock key={`block-${Date.now()}`} content={block.content} />;
+            return <SummaryBlock content={block.content} />;
         case 'text':
             return (
-                <div key={`block-${Date.now()}`} className="text-block prose prose-invert prose-sm max-w-none text-zinc-200">
+                <div className="text-block prose prose-invert prose-sm max-w-none text-zinc-200">
                     <ReactMarkdown
                         remarkPlugins={[remarkGfm]}
                         rehypePlugins={[rehypeHighlight]}
@@ -50,7 +50,6 @@ function renderBlock(block: BlockData): ReactElement | null {
                                     );
                                 }
 
-                                // For regular code blocks, just render as pre/code (will be styled by highlight.js)
                                 return (
                                     <pre className="rounded-lg bg-zinc-800/50 p-4 overflow-x-auto border border-zinc-700">
                                         <code className={className}>{children}</code>
@@ -69,7 +68,7 @@ function renderBlock(block: BlockData): ReactElement | null {
 }
 
 export function StructuredBlocksRenderer({ content }: StructuredBlocksRendererProps) {
-    const blocks = parseStructuredBlocks(content);
+    const blocks = useMemo(() => parseStructuredBlocks(content), [content]);
 
     if (blocks.length === 0) {
         // Se não encontrou blocos estruturados, renderizar como texto markdown
