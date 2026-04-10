@@ -65,31 +65,6 @@ export async function POST(req: Request) {
       delete (tools as any).internetSearch;
     }
 
-    // Some models (especially free/community) fail with tool calling.
-    const modelIdLower = (selectedModel || '').toLowerCase();
-    const disableToolsForModel =
-      modelIdLower.includes(':free') ||
-      modelIdLower.includes('llama-3.2-3b') ||
-      modelIdLower.includes('mistral-small') ||
-      modelIdLower.includes('mistral-small-3.1') ||
-      modelIdLower.includes('hunter-alpha') || // Hunter-alpha seems problematic with tools in this env
-      modelIdLower.includes('gpt-5.4') ||      // GPT-5.4 family doesn't support tool calling on OpenRouter
-      modelIdLower.includes('gpt-5.4-pro') ||
-      modelIdLower.includes('gpt-5.4-nano') ||
-      modelIdLower.includes('gpt-5.4-mini');
-
-    const toolsToUse = disableToolsForModel ? undefined : tools;
-
-    // Select the correct agent profile (Default to GERAL)
-    const agentProfile = AGENT_PROFILES[(selectedAgent as AgentRole) || 'GERAL'];
-
-    // The system prompt controls the core behavior of Cuca AI
-    const basePrompt = `Você é o Cuca AI, um AI Workspace pessoal e segundo cérebro do usuário.
-Você possui memória permanente, pode pesquisar na internet e analisar documentos.
-Sempre em português, a menos que solicitado o contrário.`;
-
-    const systemPrompt = `${basePrompt}\n\nPERFIL ATUAL: ${agentProfile.name}\n${agentProfile.systemPrompt}`;
-
     const lastMessage = messages[messages.length - 1];
     const rawTextQuery = lastMessage?.content || '';
     
@@ -98,6 +73,37 @@ Sempre em português, a menos que solicitado o contrário.`;
     
     const isUserMessage = lastMessage?.role === 'user';
     const modelToUse = selectedModel || 'openai/chatgpt-4o-latest';
+
+    // Some models (especially free/community) fail with tool calling.
+    const modelIdLower = (selectedModel || '').toLowerCase();
+    const isGemini = modelIdLower.includes('gemini');
+    
+    const disableToolsForModel =
+      (modelIdLower.includes(':free') && !isGemini) || // Allow tools for Gemini even if free
+      modelIdLower.includes('llama-3.2-3b') ||
+      modelIdLower.includes('mistral-small') ||
+      modelIdLower.includes('mistral-small-3.1') ||
+      modelIdLower.includes('hunter-alpha') || 
+      modelIdLower.includes('gpt-5.4');
+
+    const toolsToUse = disableToolsForModel ? undefined : tools;
+    console.log(`[Chat API] Tools state for model "${modelToUse}": ${toolsToUse ? 'ENABLED' : 'DISABLED'}`);
+
+    // Select the correct agent profile (Default to GERAL)
+    const agentProfile = AGENT_PROFILES[(selectedAgent as AgentRole) || 'GERAL'];
+
+    // The system prompt controls the core behavior of Cuca AI
+    const basePrompt = `Você é o Cuca AI, um AI Workspace pessoal e segundo cérebro do usuário.
+Você possui memória permanente, pode pesquisar na internet e analisar documentos.
+Sempre em português, a menos que solicitado o contrário.
+
+PREVISÃO DO TEMPO:
+Se o usuário pedir previsão do tempo (ex: "vai chover?", "clima em [X]"), e fornecer coordenadas (decimal ou DMS) ou uma cidade, acione a ferramenta \`weatherForecast\`.
+Ao interpretar a resposta, nunca invente dados. Se a ferramenta indicar fallback para a cidade mais próxima (fallback_used: true), inclua no texto da resposta explicitamente: "Usei a cidade mais próxima como fallback: [cidade]".`;
+
+    const systemPrompt = `${basePrompt}\n\nPERFIL ATUAL: ${agentProfile.name}\n${agentProfile.systemPrompt}`;
+
+    
 
     // 1. Semantic Cache Check
     if (isUserMessage && typeof textQuery === 'string') {
