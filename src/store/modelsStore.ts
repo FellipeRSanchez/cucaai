@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { AgentRole } from '@/lib/agents';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────
 
 export interface AIModel {
   id: string;
@@ -49,7 +49,7 @@ const DEFAULT_FILTERS: ModelFilters = {
   freeOnly: false,
 };
 
-// ─── Preset Definitions ───────────────────────────────────────────────────────
+// ─── Preset Definitions ───────────────────────────────────────────────────
 
 const PREFERRED_MODELS: Record<NonNullable<ModelPreset>, string[]> = {
   best_overall: [
@@ -126,7 +126,7 @@ function applyFilters(models: AIModel[], filters: ModelFilters): AIModel[] {
   });
 }
 
-// ─── Store ────────────────────────────────────────────────────────────────────
+// ─── Store ────────────────────────────────────────────────────────────────
 
 interface ModelsState {
   models: AIModel[];
@@ -138,6 +138,8 @@ interface ModelsState {
   isExplorerOpen: boolean;
   activePreset: ModelPreset;
   filters: ModelFilters;
+  // Favorites
+  favoriteModels: string[];
   // Actions
   fetchModels: () => Promise<void>;
   refreshModels: () => Promise<void>;
@@ -148,6 +150,9 @@ interface ModelsState {
   setPreset: (preset: ModelPreset) => void;
   setFilter: (key: keyof ModelFilters, value: ModelFilters[keyof ModelFilters]) => void;
   resetFilters: () => void;
+  // Favorites actions
+  toggleFavorite: (modelId: string) => void;
+  isFavorite: (modelId: string) => boolean;
   // Computed
   getFilteredModels: () => AIModel[];
   getSelectedModelData: () => AIModel | undefined;
@@ -170,6 +175,15 @@ function getBestFreeModel(models: AIModel[]): string {
   return sorted[0].id;
 }
 
+// Função para obter favoritos do localStorage (apenas no cliente)
+function getInitialFavoriteModels(): string[] {
+  if (typeof window !== 'undefined') {
+    const saved = localStorage.getItem('cucaai_favorite_models');
+    return saved ? JSON.parse(saved) : [];
+  }
+  return [];
+}
+
 export const useModelsStore = create<ModelsState>((set, get) => ({
   models: [],
   selectedModel: 'google/gemma-2-9b-it', // Modelo free padrão inicial
@@ -179,6 +193,7 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
   isExplorerOpen: false,
   activePreset: null,
   filters: DEFAULT_FILTERS,
+  favoriteModels: getInitialFavoriteModels(),
 
   fetchModels: async () => {
     set({ isLoading: true, error: null });
@@ -233,6 +248,27 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
     filters: { ...s.filters, [key]: value }
   })),
   resetFilters: () => set({ activePreset: null, filters: DEFAULT_FILTERS }),
+
+  toggleFavorite: (modelId) => {
+    set((state) => {
+      const isFav = state.favoriteModels.includes(modelId);
+      let newFavorites;
+      if (isFav) {
+        newFavorites = state.favoriteModels.filter(id => id !== modelId);
+      } else {
+        newFavorites = [...state.favoriteModels, modelId];
+      }
+      // Persistir no localStorage (apenas no cliente)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('cucaai_favorite_models', JSON.stringify(newFavorites));
+      }
+      return { favoriteModels: newFavorites };
+    });
+  },
+
+  isFavorite: (modelId) => {
+    return get().favoriteModels.includes(modelId);
+  },
 
   getFilteredModels: () => {
     const { models, activePreset, filters } = get();

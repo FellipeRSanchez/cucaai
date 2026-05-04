@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { useModelsStore } from './modelsStore';
+import { AgentProfile } from '@/lib/agents';
 
 export interface Conversation {
   con_id: string;
@@ -17,12 +18,34 @@ export interface Message {
   men_criado_em: string;
 }
 
+// Agent interface for custom agents from database
+export interface CustomAgent {
+  id: string;
+  usuario_id: string;
+  nome: string;
+  descricao: string | null;
+  emoji: string;
+  system_prompt: string;
+  ferramentas: string[];
+  is_default: boolean;
+  criado_em: string;
+  atualizado_em: string;
+}
+
+// Combined agent type that works with both default and custom agents
+export type Agent = AgentProfile | CustomAgent;
+
 interface ChatState {
   conversations: Conversation[];
   currentConversationId: string | null;
   messages: Message[];
   isLoading: boolean;
   error: string | null;
+  
+  // Agent state
+  customAgents: CustomAgent[];
+  agentsLoading: boolean;
+  agentsError: string | null;
 
   setConversations: (conversations: Conversation[]) => void;
   setCurrentConversationId: (id: string | null) => void;
@@ -33,6 +56,14 @@ interface ChatState {
   updateConversationTitle: (id: string, newTitle: string) => Promise<void>;
   deleteMessage: (id: string) => Promise<void>;
   resetChat: () => void;
+  
+  // Agent actions
+  setCustomAgents: (agents: CustomAgent[]) => void;
+  setAgentsLoading: (loading: boolean) => void;
+  setAgentsError: (error: string | null) => void;
+  loadCustomAgents: () => Promise<void>;
+  saveAgent: (agent: Omit<CustomAgent, 'id' | 'usuario_id' | 'criado_em' | 'atualizado_em'> & Partial<Pick<CustomAgent, 'id'>>) => Promise<void>;
+  deleteAgent: (id: string) => Promise<void>;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -41,10 +72,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
   messages: [],
   isLoading: false,
   error: null,
+  
+  // Agent state
+  customAgents: [],
+  agentsLoading: false,
+  agentsError: null,
 
   setConversations: (conversations) => set({ conversations }),
   setCurrentConversationId: (id) => set({ currentConversationId: id }),
   setMessages: (messages) => set({ messages }),
+  
+  // Agent actions
+  setCustomAgents: (agents) => set({ customAgents: agents }),
+  setAgentsLoading: (loading) => set({ agentsLoading: loading }),
+  setAgentsError: (error) => set({ agentsError: error }),
 
   fetchConversations: async () => {
     set({ isLoading: true, error: null });
@@ -103,7 +144,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       const { conversations } = get();
       set({
-        conversations: conversations.map(c => 
+        conversations: conversations.map(c =>
           c.con_id === id ? { ...c, con_titulo: newTitle } : c
         )
       });
@@ -127,5 +168,69 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
-  resetChat: () => set({ currentConversationId: null, messages: [] })
+  resetChat: () => set({ currentConversationId: null, messages: [] }),
+  
+  // Agent actions
+  loadCustomAgents: async () => {
+    set({ agentsLoading: true, agentsError: null });
+    try {
+      const res = await fetch('/api/agents');
+      if (!res.ok) throw new Error('Falha ao buscar agentes');
+      const data = await res.json();
+      set({ customAgents: data, agentsLoading: false });
+    } catch (err: any) {
+      set({ agentsError: err.message, agentsLoading: false });
+    }
+  },
+
+  saveAgent: async (agentData) => {
+    try {
+      // If agent has an ID, it's an update; otherwise, it's a create
+      if (agentData.id) {
+        const res = await fetch('/api/agents', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(agentData),
+        });
+        if (!res.ok) throw new Error('Falha ao atualizar agente');
+        
+        const updatedAgent = await res.json();
+        // Update the agent in the store
+        set(state => ({
+          customAgents: state.customAgents.map(agent =>
+            agent.id === agentData.id ? updatedAgent : agent
+          )
+        }));
+      } else {
+        const res = await fetch('/api/agents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(agentData),
+        });
+        if (!res.ok) throw new Error('Falha ao criar agente');
+        
+        const newAgent = await res.json();
+        // Add the new agent to the store
+        set(state => ({
+          customAgents: [...state.customAgents, newAgent]
+        }));
+      }
+    } catch (err: any) {
+      throw err; // Re-throw to be handled by calling function
+    }
+  },
+
+  deleteAgent: async (id: string) => {
+    try {
+      const res = await fetch(`/api/agents?id=${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Falha ao deletar agente');
+      
+      // Remove the agent from the store
+      set(state => ({
+        customAgents: state.customAgents.filter(agent => agent.id !== id)
+      }));
+    } catch (err: any) {
+      throw err; // Re-throw to be handled by calling function
+    }
+  }
 }));

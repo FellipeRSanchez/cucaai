@@ -1,7 +1,7 @@
 'use client';
 
 import { useModelsStore, AIModel, ModelPreset } from '@/store/modelsStore';
-import { X, Search, Cpu, Zap, Trophy, Gift, Code2, Brain, Check } from 'lucide-react';
+import { X, Search, Cpu, Zap, Trophy, Gift, Code2, Brain, Check, Star } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import clsx from 'clsx';
 
@@ -68,6 +68,11 @@ function ModelCard({ model, isSelected, onSelect }: {
   isSelected: boolean;
   onSelect: () => void;
 }) {
+  const { isFavorite, toggleFavorite } = useModelsStore(state => ({
+    isFavorite: state.isFavorite,
+    toggleFavorite: state.toggleFavorite,
+  }));
+
   return (
     <button
       onClick={onSelect}
@@ -86,12 +91,28 @@ function ModelCard({ model, isSelected, onSelect }: {
       )}
 
       {/* Header row */}
-      <div className="flex items-start gap-2 mb-2 pr-6">
+      <div className="flex items-start gap-2 mb-2">
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-zinc-100 truncate leading-tight">{model.name}</p>
           <span className="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium border bg-zinc-700/40 text-zinc-300 border-zinc-600/30">
             {friendlyProvider(model.provider)}
           </span>
+        </div>
+        <div className="flex-shrink-0">
+          <button
+            onClick={(e) => {
+              e.stopPropagation(); // prevent triggering the model select
+              toggleFavorite(model.id);
+            }}
+            className="p-1 rounded hover:bg-zinc-800 transition-colors"
+            title={isFavorite(model.id) ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+          >
+            {isFavorite(model.id) ? (
+              <Star size={18} className="text-yellow-400" />
+            ) : (
+              <Star size={18} className="text-zinc-400" />
+            )}
+          </button>
         </div>
       </div>
 
@@ -143,6 +164,7 @@ export function ModelExplorer() {
   const {
     isExplorerOpen, closeExplorer, selectedModel, setSelectedModel,
     activePreset, setPreset, getFilteredModels, models, isLoading, fetchModels, refreshModels,
+    favoriteModels, // from store
   } = useModelsStore();
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -174,6 +196,10 @@ export function ModelExplorer() {
     models, activePreset, searchQuery
   ]);
 
+  // Separate favorites and non-favorites from filteredModels
+  const favoriteModelsList = filteredModels.filter(model => favoriteModels.includes(model.id));
+  const nonFavoriteModelsList = filteredModels.filter(model => !favoriteModels.includes(model.id));
+
   if (!isExplorerOpen) return null;
 
   return (
@@ -183,10 +209,10 @@ export function ModelExplorer() {
         className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 animate-in fade-in duration-150"
         onClick={closeExplorer}
       />
-
+    
       {/* Panel */}
       <div className="fixed inset-4 sm:inset-6 lg:inset-10 z-50 flex flex-col rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/50 animate-in fade-in slide-in-from-bottom-4 duration-200 overflow-hidden">
-
+    
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
           <div>
@@ -205,7 +231,7 @@ export function ModelExplorer() {
             <X size={18} />
           </button>
         </div>
-
+    
         {/* Search and Presets */}
         <div className="px-5 py-3 border-b border-zinc-800/50 shrink-0">
           {/* Search Input */}
@@ -227,7 +253,7 @@ export function ModelExplorer() {
               </button>
             )}
           </div>
-
+    
           {/* Presets */}
           <div className="flex gap-2 overflow-x-auto scrollbar-none">
             {PRESETS.map(p => (
@@ -246,7 +272,7 @@ export function ModelExplorer() {
             ))}
           </div>
         </div>
-
+    
         {/* Model Grid */}
         <main className="flex-1 overflow-y-auto p-4 custom-scrollbar">
           {isLoading ? (
@@ -261,19 +287,49 @@ export function ModelExplorer() {
               <button onClick={() => setPreset(null)} className="text-xs text-indigo-400 hover:underline">Ver todos os modelos</button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {filteredModels.map(model => (
-                <ModelCard
-                  key={model.id}
-                  model={model}
-                  isSelected={model.id === selectedModel}
-                  onSelect={() => {
-                    setSelectedModel(model.id);
-                    closeExplorer();
-                  }}
-                />
-              ))}
-            </div>
+            <>
+              {/* Favorites Section */}
+              {favoriteModelsList.length > 0 && (
+                <section className="mb-6">
+                  <h3 className="text-lg font-semibold text-zinc-200 mb-3 flex items-center gap-2">
+                    <span className="text-yellow-400">⭐</span> Favoritos
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                    {favoriteModelsList.map(model => (
+                      <ModelCard
+                        key={model.id}
+                        model={model}
+                        isSelected={model.id === selectedModel}
+                        onSelect={() => {
+                          setSelectedModel(model.id);
+                          closeExplorer();
+                        }}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
+    
+              {/* Non-Favorites Section */}
+              <section>
+                <h3 className="text-lg font-semibold text-zinc-200 mb-3">
+                  {activePreset ? PRESETS.find(p => p.id === activePreset)?.label : 'Todos os modelos'}
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {nonFavoriteModelsList.map(model => (
+                    <ModelCard
+                      key={model.id}
+                      model={model}
+                      isSelected={model.id === selectedModel}
+                      onSelect={() => {
+                        setSelectedModel(model.id);
+                        closeExplorer();
+                      }}
+                    />
+                  ))}
+                </div>
+              </section>
+            </>
           )}
         </main>
       </div>

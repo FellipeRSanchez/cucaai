@@ -521,7 +521,7 @@ export function ChatInterface() {
                     />
                   )}
                   <div className={clsx(
-                    "prose prose-sm max-w-none",
+                    "chat-message prose prose-sm max-w-none",
                     m.role === 'user'
                       ? "prose-invert text-white prose-p:text-white prose-headings:text-white prose-strong:text-white prose-code:text-white prose-pre:bg-transparent prose-pre:border prose-pre:border-white/10"
                       : ""

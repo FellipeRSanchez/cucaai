@@ -296,6 +296,29 @@ pre code.hljs {
   background: rgba(156, 163, 175, 0.8);
 }
 
+/* Tabelas nas mensagens do chat */
+.chat-message table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0;
+  overflow-x: auto;
+  display: block;
+}
+.chat-message th {
+  background: rgb(39 39 42); /* zinc-800 */
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  border: 1px solid rgb(63 63 70); /* zinc-700 */
+  font-weight: 600;
+}
+.chat-message td {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgb(63 63 70); /* zinc-700 */
+}
+.chat-message tr:nth-child(even) td {
+  background: rgb(24 24 27 / 0.5); /* zinc-900/50 */
+}
+
 /* Responsive adjustments */
 @media (max-width: 640px) {
 

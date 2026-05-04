@@ -3,7 +3,7 @@
 import { useModelsStore } from '@/store/modelsStore';
 import { useEffect, useRef, useState } from 'react';
 import { useChatStore } from '@/store/chatStore';
-import { Bot, Paperclip, Globe, Wrench, ChevronDown, LogOut, Loader2, ChevronRight, Menu, X, Edit2, Check } from 'lucide-react';
+import { Bot, Paperclip, Globe, Settings, ChevronDown, LogOut, Loader2, ChevronRight, Menu, X, Edit2, Check, Wrench } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import clsx from 'clsx';
@@ -43,6 +43,7 @@ export function Header() {
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitleValue, setEditTitleValue] = useState("");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const currentChat = conversations.find(c => c.con_id === currentConversationId);
@@ -97,119 +98,177 @@ export function Header() {
 
 
   return (
-    <header className="h-14 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between px-4 shrink-0 shadow-sm z-10 w-full relative">
-      <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-        {/* Mobile Menu Button */}
-        <button
-          onClick={() => setMobileMenuOpen(!isMobileMenuOpen)}
-          className="md:hidden p-2 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
-          title={isMobileMenuOpen ? "Fechar menu" : "Abrir menu"}
-        >
-          {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
-        </button>
-
-        {/* Model Explorer Trigger */}
-        <button
-          onClick={openExplorer}
-          disabled={isLoading}
-          className={clsx(
-            'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all max-w-[120px] sm:max-w-[220px]',
-            'bg-zinc-900 border-zinc-800 hover:border-indigo-500/50 hover:bg-zinc-800/80',
-            'focus:outline-none focus:ring-1 focus:ring-indigo-500/50',
-            'disabled:opacity-50 disabled:cursor-wait shadow-sm',
-          )}
-          title="Explorar modelos"
-        >
-          {isLoading ? (
-            <Loader2 size={14} className="animate-spin text-zinc-400 shrink-0" />
-          ) : (
-            <div className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 shadow-sm shadow-indigo-500/50" />
-          )}
-          <span className="text-zinc-200 truncate font-medium text-xs leading-none">
-            {selectedModelData?.name ?? (selectedModel.split('/')[1] ?? selectedModel)}
-          </span>
-          {selectedModelData && (
-            <span className="text-zinc-500 text-[10px] shrink-0 hidden sm:block">
-              {shortProvider(selectedModel)}
-            </span>
-          )}
-          <ChevronDown size={12} className="text-zinc-500 shrink-0" />
-        </button>
-
-        {/* Agent Selector */}
-        <div className="relative group hidden sm:block">
-          <select
-            value={selectedAgent}
-            onChange={(e) => setSelectedAgent(e.target.value as AgentRole)}
-            className="appearance-none flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-md px-3 py-1.5 pl-8 hover:border-zinc-700 outline-none focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer shadow-sm w-[110px] sm:w-[160px] truncate"
+    <>
+      <header className="h-14 border-b border-zinc-800 bg-zinc-950 flex items-center justify-between px-4 shrink-0 shadow-sm z-10 w-full relative">
+        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setMobileMenuOpen(!isMobileMenuOpen)}
+            className="md:hidden p-2 rounded-md text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            title={isMobileMenuOpen ? "Fechar menu" : "Abrir menu"}
           >
-            {Object.values(AGENT_PROFILES).map((agent) => (
-              <option key={agent.id} value={agent.id}>
-                {agent.name}
-              </option>
-            ))}
-          </select>
-          <Bot size={16} className="text-zinc-400 absolute left-2.5 top-2 pointer-events-none" />
-          <ChevronDown className="absolute right-2.5 top-2 text-zinc-400 pointer-events-none" size={14} />
-        </div>
-      </div>
+            {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
 
-      {/* Center section: Chat Title */}
-      <div className="hidden md:flex flex-1 items-center justify-center min-w-0 px-4">
-        {currentChat && (
-          <div className="group flex items-center max-w-[300px] gap-2">
-            {isEditingTitle ? (
-              <div className="flex items-center w-full relative">
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={editTitleValue}
-                  onChange={(e) => setEditTitleValue(e.target.value)}
-                  onBlur={saveTitle}
-                  onKeyDown={onKeyDown}
-                  className="w-full bg-zinc-900 border border-indigo-500/50 text-zinc-100 text-sm rounded-md px-3 py-1 outline-none focus:ring-1 focus:ring-indigo-500 pr-8 shadow-sm"
-                />
-                <button 
-                  onMouseDown={(e) => { e.preventDefault(); saveTitle(); }}
-                  className="absolute right-2 text-zinc-400 hover:text-indigo-400"
-                >
-                  <Check size={14} />
-                </button>
-              </div>
-            ) : (
-              <div 
-                className="flex items-center gap-2 cursor-pointer p-1.5 rounded-md hover:bg-zinc-800/50 transition-colors w-full"
-                onClick={startEditing}
-                title="Renomear chat"
-              >
-                <div className="font-semibold text-sm text-zinc-300 truncate text-center flex-1">
-                  {currentChat.con_titulo}
-                </div>
-                <Edit2 size={12} className="text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-              </div>
+          {/* Model Explorer Trigger */}
+          <button
+            onClick={openExplorer}
+            disabled={isLoading}
+            className={clsx(
+              'flex items-center gap-2 px-3 py-1.5 rounded-lg border text-sm transition-all max-w-[120px] sm:max-w-[220px]',
+              'bg-zinc-900 border-zinc-800 hover:border-indigo-500/50 hover:bg-zinc-800/80',
+              'focus:outline-none focus:ring-1 focus:ring-indigo-500/50',
+              'disabled:opacity-50 disabled:cursor-wait shadow-sm',
             )}
+            title="Explorar modelos"
+          >
+            {isLoading ? (
+              <Loader2 size={14} className="animate-spin text-zinc-400 shrink-0" />
+            ) : (
+              <div className="w-2 h-2 rounded-full bg-indigo-500 shrink-0 shadow-sm shadow-indigo-500/50" />
+            )}
+            <span className="text-zinc-200 truncate font-medium text-xs leading-none">
+              {selectedModelData?.name ?? (selectedModel.split('/')[1] ?? selectedModel)}
+            </span>
+            {selectedModelData && (
+              <span className="text-zinc-500 text-[10px] shrink-0 hidden sm:block">
+                {shortProvider(selectedModel)}
+              </span>
+            )}
+            <ChevronDown size={12} className="text-zinc-500 shrink-0" />
+          </button>
+
+          {/* Agent Selector */}
+          <div className="relative group hidden sm:block">
+            <select
+              value={selectedAgent}
+              onChange={(e) => setSelectedAgent(e.target.value as AgentRole)}
+              className="appearance-none flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-md px-3 py-1.5 pl-8 hover:border-zinc-700 outline-none focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer shadow-sm w-[110px] sm:w-[160px] truncate"
+            >
+              {Object.values(AGENT_PROFILES).map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.name}
+                </option>
+              ))}
+            </select>
+            <Bot size={16} className="text-zinc-400 absolute left-2.5 top-2 pointer-events-none" />
+            <ChevronDown className="absolute right-2.5 top-2 text-zinc-400 pointer-events-none" size={14} />
           </div>
-        )}
-      </div>
+        </div>
 
-      <div className="flex items-center justify-end gap-2 flex-1 sm:flex-none">
+        {/* Center section: Chat Title */}
+        <div className="hidden md:flex flex-1 items-center justify-center min-w-0 px-4">
+          {currentChat && (
+            <div className="group flex items-center max-w-[300px] gap-2">
+              {isEditingTitle ? (
+                <div className="flex items-center w-full relative">
+                  <input
+                    ref={inputRef}
+                    type="text"
+                    value={editTitleValue}
+                    onChange={(e) => setEditTitleValue(e.target.value)}
+                    onBlur={saveTitle}
+                    onKeyDown={onKeyDown}
+                    className="w-full bg-zinc-900 border border-indigo-500/50 text-zinc-100 text-sm rounded-md px-3 py-1 outline-none focus:ring-1 focus:ring-indigo-500 pr-8 shadow-sm"
+                  />
+                  <button
+                    onMouseDown={(e) => { e.preventDefault(); saveTitle(); }}
+                    className="absolute right-2 text-zinc-400 hover:text-indigo-400"
+                  >
+                    <Check size={14} />
+                  </button>
+                </div>
+              ) : (
+                <div
+                  className="flex items-center gap-2 cursor-pointer p-1.5 rounded-md hover:bg-zinc-800/50 transition-colors w-full"
+                  onClick={startEditing}
+                  title="Renomear chat"
+                >
+                  <div className="font-semibold text-sm text-zinc-300 truncate text-center flex-1">
+                    {currentChat.con_titulo}
+                  </div>
+                  <Edit2 size={12} className="text-zinc-500 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
-        <HeaderAction
-          icon={<Wrench size={18} />}
-          tooltip="Configurar Ferramentas"
-          onClick={() => alert('Configurações de ferramentas em breve!')}
-        />
+        <div className="flex items-center justify-end gap-2 flex-1 sm:flex-none">
 
-        <div className="w-px h-6 bg-zinc-800 mx-1 hidden sm:block" />
+          <HeaderAction
+            icon={<Wrench size={18} />}
+            tooltip="Configurar Ferramentas"
+            onClick={() => alert('Configurações de ferramentas em breve!')}
+          />
 
-        <HeaderAction
-          icon={<LogOut size={18} />}
-          tooltip="Sair"
-          onClick={handleLogout}
-          className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
-        />
-      </div>
-    </header>
+          <div className="w-px h-6 bg-zinc-800 mx-1 hidden sm:block" />
+
+          <HeaderAction
+            icon={<LogOut size={18} />}
+            tooltip="Sair"
+            onClick={handleLogout}
+            className="text-red-400 hover:text-red-300 hover:bg-red-400/10"
+          />
+        </div>
+      </header>
+      
+      {/* Settings Dropdown (mobile) */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:hidden">
+          <div className="relative w-full max-w-xs mx-auto">
+            <div className="bg-zinc-950 border border-zinc-800 rounded-t-lg shadow-lg">
+              {/* Agent Selector */}
+              <div className="px-4 py-3 border-b border-zinc-800">
+                <label className="block text-xs font-medium text-zinc-400 mb-2">
+                  Agente Ativo
+                </label>
+                <select
+                  value={selectedAgent}
+                  onChange={(e) => {
+                    setSelectedAgent(e.target.value as AgentRole);
+                    setIsSettingsOpen(false);
+                  }}
+                  className="w-full appearance-none flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-md px-3 py-1.5 pl-8 hover:border-zinc-700 outline-none focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer shadow-sm"
+                >
+                  {Object.values(AGENT_PROFILES).map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.name}
+                    </option>
+                  ))}
+                </select>
+                <Bot size={16} className="text-zinc-400 absolute left-3 top-2.5 pointer-events-none" />
+                <ChevronDown className="absolute right-3 top-2.5 text-zinc-400 pointer-events-none" size={14} />
+              </div>
+              
+              {/* Rename Chat */}
+              <div className="px-4 py-3">
+                <label className="block text-xs font-medium text-zinc-400 mb-2">
+                  Renomear Conversa
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={editTitleValue}
+                    onChange={(e) => setEditTitleValue(e.target.value)}
+                    onBlur={saveTitle}
+                    onKeyDown={onKeyDown}
+                    className="flex-1 bg-zinc-900 border border-indigo-500/50 text-zinc-100 text-sm rounded-md px-3 py-1 outline-none focus:ring-1 focus:ring-indigo-500 pr-8 shadow-sm"
+                  />
+                  <button
+                    onMouseDown={(e) => { e.preventDefault(); saveTitle(); setIsSettingsOpen(false); }}
+                    className="text-zinc-400 hover:text-indigo-400"
+                  >
+                    <Check size={14} />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 bg-black/50 backdrop-blur-sm" onClick={() => setIsSettingsOpen(false)} />
+        </div>
+      )}
+    </>
   );
 }
 
