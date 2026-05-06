@@ -3,12 +3,13 @@
 import { useChat } from '@ai-sdk/react';
 import { useModelsStore } from '@/store/modelsStore';
 import { Send, Loader2, Sparkles, User, Bot, RefreshCw, Settings, Cpu, Paperclip, X, WifiOff, Copy, Edit2, Trash2, Globe } from 'lucide-react';
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { memo, useEffect, useRef, useCallback, useState } from 'react';
 import clsx from 'clsx';
 
 import { useUIStore } from '@/store/uiStore';
 import { useChatStore } from '@/store/chatStore';
 import { StructuredBlocksRenderer } from '@/components/chat/blocks/StructuredBlocksRenderer';
+import { useThrottledStreamingContent } from '@/components/chat/useThrottledStreamingContent';
 
 // ─── Background Job Persistence ────────────────────────────────────────────
 // When the user minimizes/closes the app while the AI is responding, we store
@@ -19,6 +20,14 @@ interface PendingJob {
   jobId: string;
   conversationId: string;
 }
+
+type ChatStreamErrorDetails = {
+  message: string;
+  code?: string;
+  reason?: string;
+  statusCode?: number;
+  retryable?: boolean;
+};
 
 function savePendingJob(job: PendingJob) {
   try { localStorage.setItem(PENDING_JOB_KEY, JSON.stringify(job)); } catch {}
@@ -96,6 +105,28 @@ function StreamingCursor() {
   );
 }
 
+interface AssistantMessageContentProps {
+  content: string;
+  isStreaming: boolean;
+}
+
+const AssistantMessageContent = memo(function AssistantMessageContent({
+  content,
+  isStreaming,
+}: AssistantMessageContentProps) {
+  const throttledContent = useThrottledStreamingContent(content, {
+    isStreaming,
+    intervalMs: 33,
+  });
+
+  return (
+    <div className="relative">
+      <StructuredBlocksRenderer content={throttledContent} isStreaming={isStreaming} />
+      {isStreaming && <StreamingCursor />}
+    </div>
+  );
+});
+
 // Indicador do modelo usado
 function ModelIndicator({ model }: { model?: string }) {
   if (!model) return null;
@@ -126,6 +157,7 @@ export function ChatInterface() {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFile, setAttachedFile] = useState<{name: string, id?: string, url?: string, type: 'document' | 'image'} | null>(null);
+  const [streamError, setStreamError] = useState<ChatStreamErrorDetails | null>(null);
 
   // Track the current job for background polling
   const currentJobRef = useRef<PendingJob | null>(null);
@@ -207,7 +239,7 @@ export function ChatInterface() {
   }, [stopPolling, fetchMessages]);
   // ───────────────────────────────────────────────────────────────────────
 
-  const { messages, input, handleInputChange, handleSubmit, append, isLoading, setMessages, reload } = useChat({
+  const { messages, input, handleInputChange, append, isLoading, setMessages } = useChat({
     api: '/api/chat',
     body: {
       selectedModel,
@@ -219,6 +251,42 @@ export function ChatInterface() {
       console.log('[ChatInterface] Response received:', response.status);
       const headerId = response.headers.get('x-conversation-id');
       const headerJobId = response.headers.get('x-job-id');
+
+      if (!response.ok) {
+        const statusFromHeader = response.headers.get('x-openrouter-status');
+        const codeFromHeader = response.headers.get('x-openrouter-error');
+        const reasonFromHeader = response.headers.get('x-openrouter-error-reason');
+        const fallbackMessage = `Falha ao consultar o provedor de IA (HTTP ${response.status}).`;
+
+        void response.clone().json()
+          .then((payload: unknown) => {
+            const data = payload as {
+              error?: string;
+              code?: string;
+              reason?: string;
+              statusCode?: number;
+              retryable?: boolean;
+            };
+
+            setStreamError({
+              message: data.error || fallbackMessage,
+              code: data.code || codeFromHeader || undefined,
+              reason: data.reason || reasonFromHeader || undefined,
+              statusCode: data.statusCode ?? (statusFromHeader ? Number(statusFromHeader) : response.status),
+              retryable: data.retryable,
+            });
+          })
+          .catch(() => {
+            setStreamError({
+              message: fallbackMessage,
+              code: codeFromHeader || undefined,
+              reason: reasonFromHeader || undefined,
+              statusCode: statusFromHeader ? Number(statusFromHeader) : response.status,
+            });
+          });
+      } else {
+        setStreamError(null);
+      }
 
       if (headerId && headerId !== currentConversationId) {
         console.log('[ChatInterface] New conversation ID:', headerId);
@@ -244,15 +312,30 @@ export function ChatInterface() {
     },
     onError: (error) => {
       console.error('[ChatInterface] Error:', error);
+      let errorMessage = 'Falha ao processar sua solicitação.';
+
       if (error instanceof Error) {
         console.error('[ChatInterface] Error Message:', error.message);
         console.error('[ChatInterface] Error Stack:', error.stack);
-        if ((error as any).cause) {
-          console.error('[ChatInterface] Error Cause:', JSON.stringify((error as any).cause, null, 2));
+        if (error.message) {
+          errorMessage = error.message;
+        }
+        const errorWithCause = error as Error & { cause?: unknown };
+        if (errorWithCause.cause) {
+          console.error('[ChatInterface] Error Cause:', JSON.stringify(errorWithCause.cause, null, 2));
         }
       } else {
         console.error('[ChatInterface] Raw Error Object:', JSON.stringify(error, null, 2));
       }
+
+      setStreamError((prev) => ({
+        message: prev?.message || errorMessage,
+        code: prev?.code,
+        reason: prev?.reason,
+        statusCode: prev?.statusCode,
+        retryable: prev?.retryable,
+      }));
+
       clearPendingJob();
       currentJobRef.current = null;
       stopPolling();
@@ -378,11 +461,11 @@ export function ChatInterface() {
       // First delete from DB via the store
       await deleteMessage(id);
       // Then remove locally from useChat
-      setMessages(messages.filter(m => m.id !== id));
+      setMessages((prev) => prev.filter(m => m.id !== id));
     } catch (error) {
       console.error('Failed to delete message:', error);
     }
-  }, [deleteMessage, messages, setMessages]);
+  }, [deleteMessage, setMessages]);
 
   const handleResendUserMessage = useCallback((content: string) => {
     append({
@@ -428,7 +511,6 @@ export function ChatInterface() {
       alert('Erro ao enviar arquivo.');
     } finally {
       setIsUploading(false);
-      setTimeout(() => setIsUploading(false), 500);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -436,6 +518,7 @@ export function ChatInterface() {
   const handleFormSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
     if (input.trim() || attachedFile) {
+      setStreamError(null);
       let finalContent = input.trim();
       
       if (attachedFile?.type === 'image' && attachedFile.url) {
@@ -449,7 +532,7 @@ export function ChatInterface() {
         { body: { attachedFile } }
       );
       
-      handleInputChange({ target: { value: '' } } as any);
+      handleInputChange({ target: { value: '' } } as React.ChangeEvent<HTMLTextAreaElement>);
       setTimeout(() => setAttachedFile(null), 100);
       if (textareaRef.current) textareaRef.current.style.height = 'auto';
     }
@@ -476,6 +559,23 @@ export function ChatInterface() {
             
             return (
               <>
+          {streamError && (
+            <div className="mb-4 rounded-xl border border-rose-500/40 bg-rose-500/10 px-4 py-3 text-rose-100">
+              <p className="text-sm font-semibold">Falha ao gerar resposta</p>
+              <p className="mt-1 text-sm text-rose-100/90">{streamError.message}</p>
+              <div className="mt-2 text-xs text-rose-100/80 space-y-0.5">
+                {typeof streamError.statusCode === 'number' && (
+                  <p>Status OpenRouter: {streamError.statusCode}</p>
+                )}
+                {streamError.code && <p>Código: {streamError.code}</p>}
+                {streamError.reason && <p>Motivo: {streamError.reason}</p>}
+                {typeof streamError.retryable === 'boolean' && (
+                  <p>{streamError.retryable ? 'Ação sugerida: aguarde e tente novamente, ou troque de modelo.' : 'Ação sugerida: revise credenciais/saldo da conta OpenRouter.'}</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {visibleMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full min-h-[50vh] text-zinc-500 gap-4">
               <div className="w-16 h-16 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center shadow-lg">
@@ -527,12 +627,10 @@ export function ChatInterface() {
                       : ""
                   )}>
                     {m.role === 'assistant' ? (
-                      <div className="relative">
-                        <StructuredBlocksRenderer content={m.content || ''} />
-                        {isLoading && m.id === messages[messages.length - 1]?.id && (
-                          <StreamingCursor />
-                        )}
-                      </div>
+                      <AssistantMessageContent
+                        content={m.content || ''}
+                        isStreaming={isLoading && m.id === messages[messages.length - 1]?.id}
+                      />
                     ) : (
                       <div className="text-zinc-200 whitespace-pre-wrap break-words">
                         {renderUserMessage(m.content)}
@@ -540,7 +638,7 @@ export function ChatInterface() {
                     )}
                   </div>
                   {m.role === 'assistant' && (
-                    <ModelIndicator model={(m as any).men_modelo || selectedModel} />
+                    <ModelIndicator model={('men_modelo' in m && typeof m.men_modelo === 'string' ? m.men_modelo : undefined) || selectedModel} />
                   )}
                 </div>
 

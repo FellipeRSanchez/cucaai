@@ -68,22 +68,30 @@ function ModelCard({ model, isSelected, onSelect }: {
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const { isFavorite, toggleFavorite } = useModelsStore(state => ({
-    isFavorite: state.isFavorite,
-    toggleFavorite: state.toggleFavorite,
-  }));
+  // Seletores individuais para evitar criação de novo objeto a cada renderização
+  const isFavorite = useModelsStore(state => state.isFavorite);
+  const toggleFavorite = useModelsStore(state => state.toggleFavorite);
 
-  return (
-    <button
-      onClick={onSelect}
-      className={clsx(
-        'group relative text-left w-full rounded-xl border p-4 transition-all duration-200',
-        'bg-zinc-900/60 hover:bg-zinc-900 focus:outline-none',
-        isSelected
-          ? 'border-indigo-500 ring-1 ring-indigo-500/30 shadow-lg shadow-indigo-500/10'
-          : 'border-zinc-800 hover:border-zinc-600'
-      )}
-    >
+    return (
+      // Substitui o <button> por <div> para evitar aninhamento inválido.
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onSelect}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onSelect();
+          }
+        }}
+        className={clsx(
+          'group relative text-left w-full rounded-xl border p-4 transition-all duration-200',
+          'bg-zinc-900/60 hover:bg-zinc-900 focus:outline-none',
+          isSelected
+            ? 'border-indigo-500 ring-1 ring-indigo-500/30 shadow-lg shadow-indigo-500/10'
+            : 'border-zinc-800 hover:border-zinc-600'
+        )}
+      >
       {isSelected && (
         <div className="absolute top-2.5 right-2.5 w-5 h-5 rounded-full bg-indigo-600 flex items-center justify-center">
           <Check size={11} className="text-white" />
@@ -99,7 +107,7 @@ function ModelCard({ model, isSelected, onSelect }: {
           </span>
         </div>
         <div className="flex-shrink-0">
-          <button
+          <div
             onClick={(e) => {
               e.stopPropagation(); // prevent triggering the model select
               toggleFavorite(model.id);
@@ -112,7 +120,7 @@ function ModelCard({ model, isSelected, onSelect }: {
             ) : (
               <Star size={18} className="text-zinc-400" />
             )}
-          </button>
+        </div>
         </div>
       </div>
 
@@ -154,31 +162,41 @@ function ModelCard({ model, isSelected, onSelect }: {
           ))}
         </div>
       )}
-    </button>
+        </div>
   );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function ModelExplorer() {
-  const {
-    isExplorerOpen, closeExplorer, selectedModel, setSelectedModel,
-    activePreset, setPreset, getFilteredModels, models, isLoading, fetchModels, refreshModels,
-    favoriteModels, // from store
-  } = useModelsStore();
+  const isExplorerOpen = useModelsStore(state => state.isExplorerOpen);
+  const closeExplorer = useModelsStore(state => state.closeExplorer);
+  const selectedModel = useModelsStore(state => state.selectedModel);
+  const setSelectedModel = useModelsStore(state => state.setSelectedModel);
+  const activePreset = useModelsStore(state => state.activePreset);
+  const setPreset = useModelsStore(state => state.setPreset);
+  const getFilteredModels = useModelsStore(state => state.getFilteredModels);
+  const isLoading = useModelsStore(state => state.isLoading);
+  const fetchModels = useModelsStore(state => state.fetchModels);
+  const refreshModels = useModelsStore(state => state.refreshModels);
+  const favoriteModels = useModelsStore(state => state.favoriteModels);
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (!isExplorerOpen) return;
 
-    if (models.length === 0) {
-      fetchModels();
+    const currentModels = useModelsStore.getState().models;
+
+    if (currentModels.length === 0) {
+      console.debug('[ModelExplorer] Carregando modelos iniciais');
+      void fetchModels();
       return;
     }
 
     // force a fresh pull each time explorer opens
-    refreshModels();
-  }, [isExplorerOpen, models.length, fetchModels, refreshModels]);
+    console.debug('[ModelExplorer] Explorer aberto com cache local, atualizando snapshot');
+    void refreshModels();
+  }, [isExplorerOpen, fetchModels, refreshModels]);
 
   const filteredModels = useMemo(() => {
     const modelsFromPreset = getFilteredModels();
@@ -191,14 +209,17 @@ export function ModelExplorer() {
       model.provider.toLowerCase().includes(query) ||
       (model.description && model.description.toLowerCase().includes(query))
     );
-  }, [
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    models, activePreset, searchQuery
-  ]);
+  }, [getFilteredModels, searchQuery]);
 
   // Separate favorites and non-favorites from filteredModels
-  const favoriteModelsList = filteredModels.filter(model => favoriteModels.includes(model.id));
-  const nonFavoriteModelsList = filteredModels.filter(model => !favoriteModels.includes(model.id));
+  const favoriteModelsList = useMemo(
+    () => filteredModels.filter(model => favoriteModels.includes(model.id)),
+    [filteredModels, favoriteModels]
+  );
+  const nonFavoriteModelsList = useMemo(
+    () => filteredModels.filter(model => !favoriteModels.includes(model.id)),
+    [filteredModels, favoriteModels]
+  );
 
   if (!isExplorerOpen) return null;
 

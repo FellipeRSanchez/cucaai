@@ -6,6 +6,22 @@ interface ContextResult {
   documents: string;
 }
 
+interface MemoryRow {
+  mem_conteudo: string;
+  mem_criado_em?: string;
+}
+
+interface MatchedChunk {
+  doc_nome: string;
+  dch_texto: string;
+}
+
+interface KeywordDoc {
+  doc_nome: string;
+  doc_conteudo: string | null;
+  doc_criado_em?: string;
+}
+
 function extractSearchTerms(query: string): string[] {
   const stopwords = new Set([
     'o', 'a', 'os', 'as', 'de', 'do', 'da', 'dos', 'das', 'e', 'é', 'em', 'no', 'na', 'nos', 'nas',
@@ -43,12 +59,52 @@ export async function assembleContext(query: string, userId?: string): Promise<C
       };
     }
 
-    // 1. Fetch Memories (Keyword for now, vector would be better too)
-    let memories: any[] = [];
-    // ... (Keep existing memory logic for now to stay focused on documents)
+    // 1. Fetch Memories (keyword-based)
+    let memories: MemoryRow[] = [];
+    try {
+      if (terms.length > 0) {
+        const orFilterMemories = terms
+          .slice(0, 3)
+          .map((t) => `mem_conteudo.ilike.%${t}%`)
+          .join(',');
+
+        const { data: matchedMemories, error: memoryError } = await supabase
+          .schema('cuca')
+          .from('memorias')
+          .select('mem_conteudo, mem_criado_em')
+          .eq('mem_usuario_id', userId)
+          .or(orFilterMemories)
+          .order('mem_criado_em', { ascending: false })
+          .limit(5);
+
+        if (memoryError) {
+          console.error('[RAG] Erro ao buscar memórias por palavras-chave:', memoryError);
+        } else {
+          memories = (matchedMemories ?? []) as MemoryRow[];
+        }
+      }
+
+      if (memories.length === 0) {
+        const { data: latestMemories, error: latestMemoryError } = await supabase
+          .schema('cuca')
+          .from('memorias')
+          .select('mem_conteudo, mem_criado_em')
+          .eq('mem_usuario_id', userId)
+          .order('mem_criado_em', { ascending: false })
+          .limit(3);
+
+        if (latestMemoryError) {
+          console.error('[RAG] Erro ao buscar memórias recentes:', latestMemoryError);
+        } else {
+          memories = (latestMemories ?? []) as MemoryRow[];
+        }
+      }
+    } catch (memoryErr) {
+      console.error('[RAG] Erro inesperado ao montar contexto de memórias:', memoryErr);
+    }
 
     // 2. Fetch Relevant Document Chunks (Vector Search - The "Real" RAG)
-    let semanticDocs: any[] = [];
+    let semanticDocs: MatchedChunk[] = [];
     try {
       const queryEmbedding = await generateEmbedding(query);
       const embeddingStr = `[${queryEmbedding.join(',')}]`;
@@ -64,7 +120,7 @@ export async function assembleContext(query: string, userId?: string): Promise<C
         console.error('[RAG] Vector search error (RPC):', chunkError);
       } else if (matchedChunks && matchedChunks.length > 0) {
         console.log(`[RAG] Semantic match found ${matchedChunks.length} chunks`);
-        semanticDocs = matchedChunks;
+        semanticDocs = matchedChunks as MatchedChunk[];
       } else {
         console.log('[RAG] No semantic chunks found for query. Try checking your embedding threshold or if embeddings are generated correctly.');
       }
@@ -73,7 +129,7 @@ export async function assembleContext(query: string, userId?: string): Promise<C
     }
 
     // 3. Fallback to Documents metadata/keyword if no chunks found or to complement
-    let keywordDocs: any[] = [];
+    let keywordDocs: KeywordDoc[] = [];
     if (terms.length > 0) {
       const orFilterDocs = terms
         .slice(0, 3)
@@ -89,11 +145,11 @@ export async function assembleContext(query: string, userId?: string): Promise<C
         .order('doc_criado_em', { ascending: false })
         .limit(3);
       
-      keywordDocs = matchedDocs ?? [];
+      keywordDocs = (matchedDocs ?? []) as KeywordDoc[];
     }
 
     // 4. Combine results
-    const combinedDocs = new Map();
+    const combinedDocs = new Map<string, string[]>();
     
     // Add semantic chunks first
     semanticDocs.forEach(chunk => {
@@ -117,8 +173,12 @@ export async function assembleContext(query: string, userId?: string): Promise<C
       })
       .join('\n---\n');
 
-    const memoriesText = memories
-      ? memories.map((m: any) => `- ${m.mem_conteudo}`).join('\n')
+    const memoriesText = memories.length > 0
+      ? memories
+          .map((m) => m.mem_conteudo?.trim())
+          .filter((content): content is string => Boolean(content))
+          .map((content) => `- ${content}`)
+          .join('\n')
       : '';
 
     return {

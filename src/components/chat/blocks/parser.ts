@@ -1,103 +1,88 @@
-import { ReactElement } from 'react';
-
 export interface BlockData {
     type: 'analysis' | 'table' | 'code' | 'chart' | 'insight' | 'warning' | 'summary' | 'text';
     content: string;
     chartType?: 'bar' | 'line' | 'pie' | 'area';
     language?: string;
+    isPartial?: boolean;
 }
 
-// Padrões de detecção de blocos
-const BLOCK_PATTERNS = {
-    analysis: /<analysis>([\s\S]*?)<\/analysis>/gi,
-    table: /<table>([\s\S]*?)<\/table>/gi,
-    code: /<code(?:\s+language="([^"]*)")?>([\s\S]*?)<\/code>/gi,
-    chart: /<chart\s+type="(bar|line|pie|area)">([\s\S]*?)<\/chart>/gi,
-    insight: /<insight>([\s\S]*?)<\/insight>/gi,
-    warning: /<warning>([\s\S]*?)<\/warning>/gi,
-    summary: /<summary>([\s\S]*?)<\/summary>/gi,
-};
-
-// Markdown-style patterns (alternativos)
-const MD_BLOCK_PATTERNS = {
-    analysis: /```analysis\n([\s\S]*?)\n```/gi,
-    table: /```table\n([\s\S]*?)\n```/gi,
-    code: /```(\w+)?\n([\s\S]*?)\n```/gi,
-    chart: /```chart:(bar|line|pie|area)\n([\s\S]*?)\n```/gi,
-    insight: /```insight\n([\s\S]*?)\n```/gi,
-    warning: /```warning\n([\s\S]*?)\n```/gi,
-    summary: /```summary\n([\s\S]*?)\n```/gi,
-};
-
 function parseBlocks(text: string): BlockData[] {
-    const blocks: BlockData[] = [];
-    let remainingText = text;
-
-    // Primeiro, extrair blocos especiais
-    for (const [type, pattern] of Object.entries(BLOCK_PATTERNS)) {
-        const matches = [...remainingText.matchAll(pattern)];
-
-        for (const match of matches) {
-            const [fullMatch, ...groups] = match;
-            const index = remainingText.indexOf(fullMatch);
-
-            // Adicionar texto anterior se houver
-            if (index > 0) {
-                const precedingText = remainingText.substring(0, index).trim();
-                if (precedingText) {
-                    blocks.push({ type: 'text', content: precedingText });
-                }
-            }
-
-            // Adicionar bloco
-            let blockContent: BlockData;
-
-            if (type === 'code') {
-                const language = groups[0] || 'text';
-                const codeContent = groups[1] || groups[0] || '';
-                blockContent = { type: 'code', content: codeContent.trim(), language };
-            } else if (type === 'chart') {
-                const chartType = groups[0] as 'bar' | 'line' | 'pie' | 'area';
-                const chartData = groups[1] || groups[0] || '';
-                blockContent = { type: 'chart', content: chartData.trim(), chartType };
-            } else {
-                blockContent = { type: type as BlockData['type'], content: match[1] || match[0] || '' };
-            }
-
-            blocks.push(blockContent);
-
-            // Remover bloco processado do texto
-            remainingText = remainingText.substring(index + fullMatch.length);
-        }
-    }
-
-    // Adicionar texto final restante
-    if (remainingText.trim()) {
-        const unclosedXmlCode = remainingText.match(/<code(?:\s+language="([^"]*)")?>([\s\S]*)$/i);
-        const unclosedXmlChart = remainingText.match(/<chart\s+type="(bar|line|pie|area)">([\s\S]*)$/i);
-        const unclosedXmlMatch = remainingText.match(/<(analysis|table|insight|warning|summary)(?:[^>]*)>([\s\S]*)$/i);
-
-        if (unclosedXmlCode) {
-            const preceding = remainingText.substring(0, unclosedXmlCode.index).trim();
-            if (preceding) blocks.push({ type: 'text', content: preceding });
-            blocks.push({ type: 'code', content: unclosedXmlCode[2], language: unclosedXmlCode[1] || 'text' });
-        } else if (unclosedXmlChart) {
-            const preceding = remainingText.substring(0, unclosedXmlChart.index).trim();
-            if (preceding) blocks.push({ type: 'text', content: preceding });
-            const typeExtracted = unclosedXmlChart[1];
-            blocks.push({ type: 'chart', content: unclosedXmlChart[2], chartType: (typeExtracted as any) });
-        } else if (unclosedXmlMatch) {
-            const preceding = remainingText.substring(0, unclosedXmlMatch.index).trim();
-            if (preceding) blocks.push({ type: 'text', content: preceding });
-            blocks.push({ type: unclosedXmlMatch[1].toLowerCase() as any, content: unclosedXmlMatch[2] });
-        } else {
-            blocks.push({ type: 'text', content: remainingText.trim() });
-        }
-    }
+    const xmlBlocks = parseXmlBlocksIncremental(text);
 
     // Se não encontrou blocos XML-style, tentar markdown-style
-    if (blocks.length <= 1 && blocks[0]?.type === 'text') {
+    if (xmlBlocks.length <= 1 && xmlBlocks[0]?.type === 'text') {
         return parseMarkdownBlocks(text);
+    }
+
+    return xmlBlocks;
+}
+
+function parseXmlBlocksIncremental(text: string): BlockData[] {
+    const blocks: BlockData[] = [];
+    const openTagRegex = /<(analysis|table|code|chart|insight|warning|summary)([^>]*)>/gi;
+
+    let cursor = 0;
+
+    while (cursor < text.length) {
+        openTagRegex.lastIndex = cursor;
+        const openMatch = openTagRegex.exec(text);
+
+        if (!openMatch) {
+            const trailingText = text.slice(cursor);
+            if (trailingText.trim()) {
+                blocks.push({ type: 'text', content: trailingText.trim() });
+            }
+            break;
+        }
+
+        const fullOpenTag = openMatch[0];
+        const rawType = (openMatch[1] || '').toLowerCase() as BlockData['type'];
+        const rawAttrs = openMatch[2] || '';
+        const openStart = openMatch.index;
+        const openEnd = openStart + fullOpenTag.length;
+
+        if (openStart > cursor) {
+            const before = text.slice(cursor, openStart);
+            if (before.trim()) {
+                blocks.push({ type: 'text', content: before.trim() });
+            }
+        }
+
+        const closeTag = `</${rawType}>`;
+        const closeStart = text.toLowerCase().indexOf(closeTag, openEnd);
+        const isClosed = closeStart >= 0;
+        const contentEnd = isClosed ? closeStart : text.length;
+        const blockContent = text.slice(openEnd, contentEnd);
+
+        if (rawType === 'code') {
+            const languageMatch = rawAttrs.match(/language="([^"]*)"/i);
+            blocks.push({
+                type: 'code',
+                content: blockContent,
+                language: languageMatch?.[1] || 'text',
+                isPartial: !isClosed,
+            });
+        } else if (rawType === 'chart') {
+            const chartTypeMatch = rawAttrs.match(/type="(bar|line|pie|area)"/i);
+            blocks.push({
+                type: 'chart',
+                content: blockContent,
+                chartType: (chartTypeMatch?.[1] as BlockData['chartType']) || 'bar',
+                isPartial: !isClosed,
+            });
+        } else {
+            blocks.push({
+                type: rawType,
+                content: blockContent,
+                isPartial: !isClosed,
+            });
+        }
+
+        if (!isClosed) {
+            break;
+        }
+
+        cursor = closeStart + closeTag.length;
     }
 
     return blocks;
@@ -105,65 +90,71 @@ function parseBlocks(text: string): BlockData[] {
 
 function parseMarkdownBlocks(text: string): BlockData[] {
     const blocks: BlockData[] = [];
-    let remainingText = text;
+    const openFenceRegex = /```([a-z0-9\-:]+)?\n/gi;
+    let cursor = 0;
 
-    for (const [type, pattern] of Object.entries(MD_BLOCK_PATTERNS)) {
-        const matches = [...remainingText.matchAll(pattern)];
+    while (cursor < text.length) {
+        openFenceRegex.lastIndex = cursor;
+        const openMatch = openFenceRegex.exec(text);
 
-        for (const match of matches) {
-            const [fullMatch, ...groups] = match;
-            const index = remainingText.indexOf(fullMatch);
-
-            if (index > 0) {
-                const precedingText = remainingText.substring(0, index).trim();
-                if (precedingText) {
-                    blocks.push({ type: 'text', content: precedingText });
-                }
+        if (!openMatch) {
+            const trailingText = text.slice(cursor);
+            if (trailingText.trim()) {
+                blocks.push({ type: 'text', content: trailingText.trim() });
             }
-
-            let blockContent: BlockData;
-
-            if (type === 'code') {
-                const language = groups[0] || 'text';
-                const codeContent = match[2] || match[1] || '';
-                blockContent = { type: 'code', content: codeContent.trim(), language };
-            } else if (type === 'chart') {
-                const chartType = groups[0] as 'bar' | 'line' | 'pie' | 'area';
-                const chartData = groups[1] || groups[0] || '';
-                blockContent = { type: 'chart', content: chartData.trim(), chartType };
-            } else {
-                blockContent = { type: type as BlockData['type'], content: match[1] || match[0] || '' };
-            }
-
-            blocks.push(blockContent);
-            remainingText = remainingText.substring(index + fullMatch.length);
+            break;
         }
-    }
 
-    if (remainingText.trim()) {
-        const unclosedMd = remainingText.match(/```([a-z0-9\-:]+)?\n([\s\S]*)$/i);
-        if (unclosedMd) {
-            const preceding = remainingText.substring(0, unclosedMd.index).trim();
-            if (preceding) blocks.push({ type: 'text', content: preceding });
-            
-            const typeStr = (unclosedMd[1] || '').toLowerCase();
-            let type: BlockData['type'] = 'code';
-            let language = 'text';
-            let chartType: any = undefined;
+        const fullOpenFence = openMatch[0];
+        const rawFenceType = (openMatch[1] || '').toLowerCase();
+        const openStart = openMatch.index;
+        const openEnd = openStart + fullOpenFence.length;
 
-            if (typeStr === 'analysis' || typeStr === 'table' || typeStr === 'insight' || typeStr === 'warning' || typeStr === 'summary') {
-                type = typeStr as any;
-            } else if (typeStr.startsWith('chart:')) {
-                type = 'chart';
-                chartType = typeStr.split(':')[1] || 'line';
-            } else {
-                language = typeStr || 'text';
+        if (openStart > cursor) {
+            const before = text.slice(cursor, openStart);
+            if (before.trim()) {
+                blocks.push({ type: 'text', content: before.trim() });
             }
+        }
 
-            blocks.push({ type, content: unclosedMd[2], language, chartType });
+        const closeStart = text.indexOf('\n```', openEnd);
+        const isClosed = closeStart >= 0;
+        const contentEnd = isClosed ? closeStart : text.length;
+        const blockContent = text.slice(openEnd, contentEnd);
+
+        let type: BlockData['type'] = 'code';
+        let language = 'text';
+        let chartType: BlockData['chartType'] | undefined;
+
+        if (
+            rawFenceType === 'analysis' ||
+            rawFenceType === 'table' ||
+            rawFenceType === 'insight' ||
+            rawFenceType === 'warning' ||
+            rawFenceType === 'summary'
+        ) {
+            type = rawFenceType as BlockData['type'];
+        } else if (rawFenceType.startsWith('chart:')) {
+            type = 'chart';
+            const parsedChartType = rawFenceType.split(':')[1] as BlockData['chartType'];
+            chartType = parsedChartType || 'line';
         } else {
-            blocks.push({ type: 'text', content: remainingText.trim() });
+            language = rawFenceType || 'text';
         }
+
+        blocks.push({
+            type,
+            content: blockContent,
+            language,
+            chartType,
+            isPartial: !isClosed,
+        });
+
+        if (!isClosed) {
+            break;
+        }
+
+        cursor = closeStart + '\n```'.length;
     }
 
     return blocks;
@@ -197,12 +188,20 @@ export function parseTableData(content: string): string[][] {
 }
 
 // Utility para parsear dados de gráfico (JSON ou CSV simples)
-export function parseChartData(content: string): any[] {
+export function parseChartData(content: string): Array<Record<string, unknown>> {
     try {
         // Tentar JSON primeiro
         if (content.trim().startsWith('[') || content.trim().startsWith('{')) {
             const json = JSON.parse(content);
-            return Array.isArray(json) ? json : [json];
+            if (Array.isArray(json)) {
+                return json as Array<Record<string, unknown>>;
+            }
+
+            if (json && typeof json === 'object') {
+                return [json as Record<string, unknown>];
+            }
+
+            return [];
         }
 
         // CSV simples: coluna1, coluna2\nvalor1, valor2
@@ -211,10 +210,16 @@ export function parseChartData(content: string): any[] {
 
         return lines.slice(1).map(line => {
             const values = line.split(',').map(v => v.trim());
-            const obj: any = {};
+            const obj: Record<string, string | number | null> = {};
             headers.forEach((header, idx) => {
                 const value = values[idx];
-                obj[header] = isNaN(Number(value)) ? value : Number(value);
+                if (value === undefined || value === '') {
+                    obj[header] = null;
+                    return;
+                }
+
+                const numericValue = Number(value);
+                obj[header] = Number.isNaN(numericValue) ? value : numericValue;
             });
             return obj;
         });

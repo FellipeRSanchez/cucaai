@@ -86,8 +86,20 @@ function resolveTags(raw: OpenRouterRawModel, isFree: boolean): string[] {
 }
 
 export function enrichModel(raw: OpenRouterRawModel): EnrichedModel {
-  const pricingPrompt = parseFloat(raw.pricing.prompt) * 1_000_000;
-  const pricingCompletion = parseFloat(raw.pricing.completion) * 1_000_000;
+  const toPricePerMillion = (value?: string): number => {
+    const parsed = Number.parseFloat(value ?? '0');
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      console.warn('[openrouter] Valor de preço inválido, aplicando fallback para 0:', {
+        modelId: raw.id,
+        rawValue: value,
+      });
+      return 0;
+    }
+    return parsed * 1_000_000;
+  };
+
+  const pricingPrompt = toPricePerMillion(raw.pricing?.prompt);
+  const pricingCompletion = toPricePerMillion(raw.pricing?.completion);
   const isFree = pricingPrompt === 0 && pricingCompletion === 0;
 
   return {

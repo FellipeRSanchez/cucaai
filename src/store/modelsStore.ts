@@ -162,7 +162,11 @@ interface ModelsState {
 // Função para encontrar o melhor modelo gratuito
 function getBestFreeModel(models: AIModel[]): string {
   const freeModels = models.filter(m => m.is_free);
-  if (freeModels.length === 0) return 'google/gemma-2-9b-it'; // fallback
+  if (freeModels.length === 0) {
+    const fallback = models[0]?.id ?? 'openai/chatgpt-4o-latest';
+    console.warn('[modelsStore] Nenhum modelo gratuito encontrado. Usando fallback:', fallback);
+    return fallback;
+  }
 
   // Ordenar por context_length (maior primeiro) e depois por nome
   const sorted = freeModels.sort((a, b) => {
@@ -178,8 +182,15 @@ function getBestFreeModel(models: AIModel[]): string {
 // Função para obter favoritos do localStorage (apenas no cliente)
 function getInitialFavoriteModels(): string[] {
   if (typeof window !== 'undefined') {
-    const saved = localStorage.getItem('cucaai_favorite_models');
-    return saved ? JSON.parse(saved) : [];
+    try {
+      const saved = localStorage.getItem('cucaai_favorite_models');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.warn('[modelsStore] Falha ao carregar favoritos do localStorage, resetando estado.', error);
+      return [];
+    }
   }
   return [];
 }
@@ -203,16 +214,25 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
       const data = await response.json();
       const models = Array.isArray(data) ? data : [];
 
-      // Selecionar automaticamente o melhor modelo gratuito
-      const bestFreeModel = getBestFreeModel(models);
+      const currentSelected = get().selectedModel;
+      const stillExists = models.find(m => m.id === currentSelected);
+      const nextSelectedModel = stillExists ? currentSelected : getBestFreeModel(models);
+
+      if (!stillExists) {
+        console.debug('[modelsStore] Modelo selecionado anterior não existe mais. Selecionando novo fallback:', {
+          previous: currentSelected,
+          next: nextSelectedModel,
+        });
+      }
 
       set({
         models,
-        selectedModel: bestFreeModel,
+        selectedModel: nextSelectedModel,
         isLoading: false
       });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch models';
+      set({ error: message, isLoading: false });
     }
   },
 
@@ -233,8 +253,9 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
         selectedModel: newSelectedModel,
         isLoading: false
       });
-    } catch (err: any) {
-      set({ error: err.message, isLoading: false });
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to refresh models';
+      set({ error: message, isLoading: false });
     }
   },
 

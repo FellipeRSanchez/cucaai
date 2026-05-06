@@ -13,6 +13,7 @@ import { SummaryBlock } from './SummaryBlock';
 
 interface StructuredBlocksRendererProps {
     content: string;
+    isStreaming?: boolean;
 }
 
 function renderBlock(block: BlockData): ReactElement | null {
@@ -67,8 +68,9 @@ function renderBlock(block: BlockData): ReactElement | null {
     }
 }
 
-export function StructuredBlocksRenderer({ content }: StructuredBlocksRendererProps) {
+export function StructuredBlocksRenderer({ content, isStreaming = false }: StructuredBlocksRendererProps) {
     const blocks = useMemo(() => parseStructuredBlocks(content), [content]);
+    const hasPartialBlocks = useMemo(() => blocks.some(block => block.isPartial), [blocks]);
 
     if (blocks.length === 0) {
         // Se não encontrou blocos estruturados, renderizar como texto markdown
@@ -105,9 +107,9 @@ export function StructuredBlocksRenderer({ content }: StructuredBlocksRendererPr
     }
 
     return (
-        <div className="structured-blocks-renderer space-y-4">
+        <div className="structured-blocks-renderer space-y-4" data-streaming={isStreaming || hasPartialBlocks}>
             {blocks.map((block, index) => (
-                <div key={`block-${index}`}>
+                <div key={`block-${index}`} data-partial={block.isPartial ? 'true' : 'false'}>
                     {renderBlock(block)}
                 </div>
             ))}
