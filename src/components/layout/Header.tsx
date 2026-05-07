@@ -144,7 +144,7 @@ export function Header() {
           {/* Agent name on mobile - FIXED: now shows on mobile */}
           <div className="flex sm:hidden items-center gap-1 text-zinc-400 text-[10px]">
             <Bot size={12} />
-            <span className="truncate">{AGENT_PROFILES[selectedAgent]?.name ?? selectedAgent}</span>
+            <span className="truncate">{(AGENT_PROFILES as Record<string, any>)[selectedAgent]?.name ?? selectedAgent}</span>
           </div>
 
           {/* Agent Selector - desktop only */}
