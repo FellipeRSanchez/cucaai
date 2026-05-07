@@ -57,6 +57,8 @@ const PREFERRED_MODELS: Record<NonNullable<ModelPreset>, string[]> = {
     'anthropic/claude-3.7-sonnet',
     'anthropic/claude-3.5-sonnet',
     'openai/chatgpt-4o-latest',
+    'openai/gpt-4o-mini',
+    'google/gemini-1.5-pro',
     'google/gemini-2.0-flash-001',
     'meta-llama/llama-4-maverick',
   ],
@@ -66,12 +68,14 @@ const PREFERRED_MODELS: Record<NonNullable<ModelPreset>, string[]> = {
     'anthropic/claude-3.7-sonnet',
     'mistralai/codestral-latest',
     'deepseek/deepseek-v3',
+    'openai/gpt-4o-code',
   ],
   best_reasoning: [
     'deepseek/deepseek-r1',
     'openai/o3-mini',
     'openai/o1',
     'anthropic/claude-3.7-sonnet',
+    'google/gemini-1.5-pro',
     'google/gemini-2.0-flash-thinking-exp',
   ],
   best_image: [
@@ -91,6 +95,7 @@ function applyPreset(preset: NonNullable<ModelPreset>, models: AIModel[]): AIMod
 
   const preferred = PREFERRED_MODELS[preset];
   const sorted: AIModel[] = [];
+  const remaining: AIModel[] = [];
 
   // Add preferred models first (in priority order)
   for (const id of preferred) {
@@ -98,16 +103,18 @@ function applyPreset(preset: NonNullable<ModelPreset>, models: AIModel[]): AIMod
     if (found) sorted.push(found);
   }
 
-  // Then add remaining that match the theme
+  // Collect remaining models that match the preset theme
   for (const m of models) {
-    if (!sorted.find(s => s.id === m.id)) {
-      if (preset === 'best_code' && m.tags.includes('code')) sorted.push(m);
-      else if (preset === 'best_reasoning' && m.tags.includes('reasoning')) sorted.push(m);
-      else if (preset === 'best_image' && (m.modality === 'multimodal' || m.tags.includes('vision'))) sorted.push(m);
-    }
+    if (sorted.find(s => s.id === m.id)) continue;
+    if (preset === 'best_code' && m.tags.includes('code')) remaining.push(m);
+    else if (preset === 'best_reasoning' && m.tags.includes('reasoning')) remaining.push(m);
+    else if (preset === 'best_image' && (m.modality === 'multimodal' || m.tags.includes('vision'))) remaining.push(m);
   }
 
-  return sorted;
+  // Sort remaining models by context length (newer/bigger models first)
+  remaining.sort((a, b) => b.context_length - a.context_length);
+
+  return sorted.concat(remaining);
 }
 
 function applyFilters(models: AIModel[], filters: ModelFilters): AIModel[] {
@@ -131,7 +138,7 @@ function applyFilters(models: AIModel[], filters: ModelFilters): AIModel[] {
 interface ModelsState {
   models: AIModel[];
   selectedModel: string;
-  selectedAgent: AgentRole;
+  selectedAgent: string; // Can be AgentRole (default) or custom agent UUID
   isLoading: boolean;
   error: string | null;
   // Explorer state
@@ -144,7 +151,7 @@ interface ModelsState {
   fetchModels: () => Promise<void>;
   refreshModels: () => Promise<void>;
   setSelectedModel: (modelId: string) => void;
-  setSelectedAgent: (agent: AgentRole) => void;
+  setSelectedAgent: (agent: string) => void; // Accept both default and custom agents
   openExplorer: () => void;
   closeExplorer: () => void;
   setPreset: (preset: ModelPreset) => void;

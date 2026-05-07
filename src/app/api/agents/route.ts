@@ -43,12 +43,17 @@ export async function GET(req: NextRequest) {
       .eq('usuario_id', session.user.id)
       .order('criado_em', { ascending: false })
 
-    if (error) throw error
+    if (error) {
+      console.error('Supabase error fetching agents:', error)
+      // Return empty array on error to prevent frontend issues
+      return NextResponse.json([])
+    }
 
     return NextResponse.json(data)
   } catch (error) {
     console.error('Error fetching agents:', error)
-    return NextResponse.json({ error: 'Failed to fetch agents' }, { status: 500 })
+    // Return empty array on error
+    return NextResponse.json([])
   }
 }
 
@@ -108,12 +113,15 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error('Supabase error creating agent:', error)
+      throw error
+    }
 
     return NextResponse.json(data, { status: 201 })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating agent:', error)
-    return NextResponse.json({ error: 'Failed to create agent' }, { status: 500 })
+    return NextResponse.json({ error: error.message || 'Failed to create agent' }, { status: 500 })
   }
 }
 
@@ -179,15 +187,18 @@ export async function PUT(req: NextRequest) {
       .select()
       .single()
 
-    if (error) throw error
+    if (error) {
+      console.error('Supabase error updating agent:', error)
+      throw error
+    }
     if (!data) {
       return NextResponse.json({ error: 'Agent not found' }, { status: 404 })
     }
 
     return NextResponse.json(data)
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error updating agent:', error)
-    return NextResponse.json({ error: 'Failed to update agent' }, { status: 500 })
+    return NextResponse.json({ error: error.message || 'Failed to update agent' }, { status: 500 })
   }
 }
 
@@ -237,11 +248,14 @@ export async function DELETE(req: NextRequest) {
       .eq('id', id)
       .eq('usuario_id', session.user.id)
 
-    if (error) throw error
+    if (error) {
+      console.error('Supabase error deleting agent:', error)
+      throw error
+    }
 
     return NextResponse.json({ success: true })
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error deleting agent:', error)
-    return NextResponse.json({ error: 'Failed to delete agent' }, { status: 500 })
+    return NextResponse.json({ error: error.message || 'Failed to delete agent' }, { status: 500 })
   }
 }

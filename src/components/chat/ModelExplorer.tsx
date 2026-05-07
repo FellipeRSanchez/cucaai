@@ -180,36 +180,68 @@ export function ModelExplorer() {
   const fetchModels = useModelsStore(state => state.fetchModels);
   const refreshModels = useModelsStore(state => state.refreshModels);
   const favoriteModels = useModelsStore(state => state.favoriteModels);
+  const models = useModelsStore(state => state.models);
+  const filters = useModelsStore(state => state.filters);
+  const setFilter = useModelsStore(state => state.setFilter);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
+  // Debug: log models count whenever they change
+  useEffect(() => {
+    console.debug('[ModelExplorer] modelos carregados:', useModelsStore.getState().models.length);
+  }, [useModelsStore.getState().models]);
+
+  // Reset busca ao abrir o explorador para garantir que a lista completa seja exibida
+  useEffect(() => {
+    if (isExplorerOpen) setSearchQuery('');
+  }, [isExplorerOpen]);
+
+  // Load models on first mount if not present
+  useEffect(() => {
+    if (useModelsStore.getState().models.length === 0) {
+      console.debug('[ModelExplorer] Carregando modelos na montagem');
+      void fetchModels();
+    }
+  }, []);
+
+  // Reset filters and refresh when the explorer is opened
   useEffect(() => {
     if (!isExplorerOpen) return;
 
-    const currentModels = useModelsStore.getState().models;
+    setPreset(null);
+    setFilter('freeOnly', false);
+    setShowFavoritesOnly(false);
 
-    if (currentModels.length === 0) {
-      console.debug('[ModelExplorer] Carregando modelos iniciais');
+    console.debug('[ModelExplorer] Explorer aberto, atualizando modelos');
+    const current = useModelsStore.getState().models;
+    if (current.length === 0) {
       void fetchModels();
-      return;
+    } else {
+      void refreshModels();
     }
-
-    // force a fresh pull each time explorer opens
-    console.debug('[ModelExplorer] Explorer aberto com cache local, atualizando snapshot');
-    void refreshModels();
   }, [isExplorerOpen, fetchModels, refreshModels]);
 
-  const filteredModels = useMemo(() => {
+  // Compute filtered models on each render to react to store updates
+  const filteredModels = (() => {
     const modelsFromPreset = getFilteredModels();
-    if (!searchQuery.trim()) return modelsFromPreset;
-
+    const base = modelsFromPreset.filter(model => {
+      if (showFavoritesOnly && !favoriteModels.includes(model.id)) return false;
+      return true;
+    });
+    // If no search and base is empty but we have models, fallback to all models
+    if (!searchQuery.trim() && base.length === 0 && models.length > 0) return modelsFromPreset;
+    if (!searchQuery.trim()) return base;
     const query = searchQuery.toLowerCase();
-    return modelsFromPreset.filter(model =>
+    const filtered = base.filter(model =>
       model.name.toLowerCase().includes(query) ||
       model.id.toLowerCase().includes(query) ||
       model.provider.toLowerCase().includes(query) ||
       (model.description && model.description.toLowerCase().includes(query))
     );
-  }, [getFilteredModels, searchQuery]);
+    // If filtering yields empty but we have models, show all
+    if (filtered.length === 0 && models.length > 0) return modelsFromPreset;
+    return filtered;
+  })();
 
   // Separate favorites and non-favorites from filteredModels
   const favoriteModelsList = useMemo(
@@ -232,7 +264,8 @@ export function ModelExplorer() {
       />
     
       {/* Panel */}
-      <div className="fixed inset-4 sm:inset-6 lg:inset-10 z-50 flex flex-col rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/50 animate-in fade-in slide-in-from-bottom-4 duration-200 overflow-hidden">
+        {/* Use full-screen inset on mobile (xs) and padded inset on larger screens */}
+        <div className="fixed inset-0 sm:inset-4 md:inset-6 lg:inset-10 z-50 flex flex-col rounded-2xl border border-zinc-800 bg-zinc-950 shadow-2xl shadow-black/50 animate-in fade-in slide-in-from-bottom-4 duration-200 overflow-y-auto">
     
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800 shrink-0">
@@ -275,22 +308,28 @@ export function ModelExplorer() {
             )}
           </div>
     
-          {/* Presets */}
-          <div className="flex gap-2 overflow-x-auto scrollbar-none">
-            {PRESETS.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setPreset(activePreset === p.id ? null : p.id)}
-                className={clsx(
-                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border whitespace-nowrap bg-gradient-to-r transition-all duration-150 shrink-0',
-                  p.color,
-                  activePreset === p.id ? 'opacity-100 ring-1 ring-current/50' : 'opacity-70 hover:opacity-100'
-                )}
-              >
-                {p.icon}
-                {p.label}
-              </button>
-            ))}
+          {/* Filter toggles */}
+          <div className="flex gap-2 overflow-x-auto scrollbar-none items-center">
+            {/* Free only toggle */}
+            <button
+              onClick={() => setFilter('freeOnly', !filters.freeOnly)}
+              className={clsx(
+                'flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border bg-gradient-to-r',
+                filters.freeOnly ? 'from-emerald-500/20 to-green-500/10 border-emerald-500/30 text-emerald-300 hover:border-emerald-400/60' : 'border-zinc-700 text-zinc-400 hover:border-zinc-600',
+              )}
+            >
+              <Gift size={14} /> Gratuito
+            </button>
+            {/* Favorites only toggle */}
+            <button
+              onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+              className={clsx(
+                'flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold border bg-gradient-to-r',
+                showFavoritesOnly ? 'from-yellow-500/20 to-amber-500/10 border-yellow-500/30 text-yellow-300 hover:border-yellow-400/60' : 'border-zinc-700 text-zinc-400 hover:border-zinc-600',
+              )}
+            >
+              <Star size={14} /> Favoritos
+            </button>
           </div>
         </div>
     
@@ -334,7 +373,7 @@ export function ModelExplorer() {
               {/* Non-Favorites Section */}
               <section>
                 <h3 className="text-lg font-semibold text-zinc-200 mb-3">
-                  {activePreset ? PRESETS.find(p => p.id === activePreset)?.label : 'Todos os modelos'}
+                  Todos os modelos
                 </h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                   {nonFavoriteModelsList.map(model => (

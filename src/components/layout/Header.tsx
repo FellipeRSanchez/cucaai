@@ -33,9 +33,9 @@ function shortProvider(id: string): string {
 export function Header() {
   const {
     models, fetchModels, refreshModels, selectedModel, setSelectedModel,
-    openExplorer, getSelectedModelData, isLoading
+    openExplorer, getSelectedModelData, isLoading, selectedAgent, setSelectedAgent
   } = useModelsStore();
-  const { selectedAgent, setSelectedAgent } = useModelsStore();
+  const { customAgents } = useChatStore();
   const { isMobileMenuOpen, setMobileMenuOpen } = useUIStore();
   const { currentConversationId, conversations, updateConversationTitle } = useChatStore();
 
@@ -96,6 +96,9 @@ export function Header() {
     }
   };
 
+  const handleOpenAgentSelector = () => {
+    setIsSettingsOpen(!isSettingsOpen);
+  };
 
   return (
     <>
@@ -138,16 +141,29 @@ export function Header() {
             <ChevronDown size={12} className="text-zinc-500 shrink-0" />
           </button>
 
-          {/* Agent Selector */}
+          {/* Agent name on mobile - FIXED: now shows on mobile */}
+          <div className="flex sm:hidden items-center gap-1 text-zinc-400 text-[10px]">
+            <Bot size={12} />
+            <span className="truncate">{AGENT_PROFILES[selectedAgent]?.name ?? selectedAgent}</span>
+          </div>
+
+          {/* Agent Selector - desktop only */}
           <div className="relative group hidden sm:block">
             <select
               value={selectedAgent}
-              onChange={(e) => setSelectedAgent(e.target.value as AgentRole)}
+              onChange={(e) => setSelectedAgent(e.target.value as any)}
               className="appearance-none flex items-center gap-2 bg-zinc-900 border border-zinc-800 text-zinc-200 text-sm rounded-md px-3 py-1.5 pl-8 hover:border-zinc-700 outline-none focus:ring-1 focus:ring-indigo-500 transition-colors cursor-pointer shadow-sm w-[110px] sm:w-[160px] truncate"
             >
+              {/* Default agents */}
               {Object.values(AGENT_PROFILES).map((agent) => (
                 <option key={agent.id} value={agent.id}>
                   {agent.name}
+                </option>
+              ))}
+              {/* Custom agents */}
+              {customAgents.map((agent) => (
+                <option key={agent.id} value={agent.id}>
+                  {agent.nome}
                 </option>
               ))}
             </select>
@@ -196,10 +212,11 @@ export function Header() {
 
         <div className="flex items-center justify-end gap-2 flex-1 sm:flex-none">
 
+          {/* Wrench icon now opens agent selector on mobile */}
           <HeaderAction
             icon={<Wrench size={18} />}
-            tooltip="Configurar Ferramentas"
-            onClick={() => alert('Configurações de ferramentas em breve!')}
+            tooltip="Configurar Agente"
+            onClick={handleOpenAgentSelector}
           />
 
           <div className="w-px h-6 bg-zinc-800 mx-1 hidden sm:block" />
@@ -240,7 +257,7 @@ export function Header() {
                 <Bot size={16} className="text-zinc-400 absolute left-3 top-2.5 pointer-events-none" />
                 <ChevronDown className="absolute right-3 top-2.5 text-zinc-400 pointer-events-none" size={14} />
               </div>
-              
+               
               {/* Rename Chat */}
               <div className="px-4 py-3">
                 <label className="block text-xs font-medium text-zinc-400 mb-2">

@@ -31,10 +31,10 @@ export function AgentsView() {
     deleteAgent
   } = useChatStore();
   
-  const [selectedAgentId, setSelectedAgentId] = useState<string | AgentRole>('GERAL');
+  const [selectedAgentId, setSelectedAgentId] = useState<string>('');
   const [isEditing, setIsEditing] = useState(false);
-  const [isDefaultAgent, setIsDefaultAgent] = useState(true);
   const [agentForm, setAgentForm] = useState({
+    id: '',
     nome: '',
     descricao: '',
     emoji: '🤖',
@@ -61,37 +61,56 @@ export function AgentsView() {
   }, [loadCustomAgents]);
 
   // Determine if selected agent is default or custom
+  const isDefaultAgent = (): boolean => {
+    if (!selectedAgentId) return true;
+    return Object.values(AGENT_PROFILES).some(agent => agent.id === selectedAgentId);
+  };
+
+  // Populate form when selected agent changes
   useEffect(() => {
-    if (selectedAgentId && typeof selectedAgentId === 'string') {
-      const isDefault = Object.values(AGENT_PROFILES).some(agent => agent.id === selectedAgentId);
-      setIsDefaultAgent(isDefault);
-      
-      if (!isDefault) {
-        // Find the custom agent to populate form
-        const customAgent = customAgents.find(agent => agent.id === selectedAgentId);
-        if (customAgent) {
-          setAgentForm({
-            nome: customAgent.nome,
-            descricao: customAgent.descricao || '',
-            emoji: customAgent.emoji,
-            system_prompt: customAgent.system_prompt,
-            ferramentas: customAgent.ferramentas
-          });
-          setSelectedTools(customAgent.ferramentas);
-        }
-      } else {
-        // Populate form with default agent data
-        const defaultAgent = AGENT_PROFILES[selectedAgentId as AgentRole];
-        if (defaultAgent) {
-          setAgentForm({
-            nome: defaultAgent.name,
-            descricao: defaultAgent.description,
-            emoji: '🤖', // Default emoji for default agents
-            system_prompt: defaultAgent.systemPrompt,
-            ferramentas: []
-          });
-          setSelectedTools([]);
-        }
+    if (!selectedAgentId) {
+      // Clear form if no agent selected
+      setAgentForm({
+        id: '',
+        nome: '',
+        descricao: '',
+        emoji: '🤖',
+        system_prompt: '',
+        ferramentas: []
+      });
+      setSelectedTools([]);
+      return;
+    }
+
+    const isDefault = isDefaultAgent();
+    
+    if (isDefault) {
+      // Populate form with default agent data (read-only)
+      const defaultAgent = AGENT_PROFILES[selectedAgentId as AgentRole];
+      if (defaultAgent) {
+        setAgentForm({
+          id: defaultAgent.id,
+          nome: defaultAgent.name,
+          descricao: defaultAgent.description,
+          emoji: '🤖',
+          system_prompt: defaultAgent.systemPrompt,
+          ferramentas: []
+        });
+        setSelectedTools([]);
+      }
+    } else {
+      // Find the custom agent to populate form
+      const customAgent = customAgents.find(agent => agent.id === selectedAgentId);
+      if (customAgent) {
+        setAgentForm({
+          id: customAgent.id,
+          nome: customAgent.nome,
+          descricao: customAgent.descricao || '',
+          emoji: customAgent.emoji,
+          system_prompt: customAgent.system_prompt,
+          ferramentas: customAgent.ferramentas
+        });
+        setSelectedTools(customAgent.ferramentas);
       }
     }
   }, [selectedAgentId, customAgents]);
@@ -106,36 +125,39 @@ export function AgentsView() {
   };
 
   const handleSaveAgent = async () => {
+    if (!agentForm.nome.trim() || !agentForm.system_prompt.trim()) {
+      alert('Nome e System Prompt são obrigatórios');
+      return;
+    }
+
     setIsSaving(true);
     try {
       const agentData = {
-        ...agentForm,
+        nome: agentForm.nome,
+        descricao: agentForm.descricao,
+        emoji: agentForm.emoji,
+        system_prompt: agentForm.system_prompt,
         ferramentas: selectedTools,
         is_default: false
       };
 
-      if (isDefaultAgent) {
-        // For default agents, we can only update the prompt in local state
-        // In a real implementation, you might want to save this as a custom agent
-        alert('Agentes padrão não podem ser modificados diretamente. Crie um novo agente baseado neste.');
-        setIsSaving(false);
-        return;
-      }
-
-      if (selectedAgentId && typeof selectedAgentId === 'string' && selectedAgentId !== 'GERAL') {
+      if (agentForm.id) {
         // Update existing custom agent
+        console.log('Updating agent:', agentForm.id);
         await saveAgent({
-          id: selectedAgentId,
-          ...agentData
+          ...agentData,
+          id: agentForm.id
         });
       } else {
         // Create new custom agent
+        console.log('Creating new agent');
         await saveAgent(agentData);
       }
       
       setShowForm(false);
       setIsEditing(false);
     } catch (err: any) {
+      console.error('Error saving agent:', err);
       alert(`Erro ao salvar agente: ${err.message}`);
     } finally {
       setIsSaving(false);
@@ -143,25 +165,30 @@ export function AgentsView() {
   };
 
   const handleDeleteAgent = async () => {
-    if (!selectedAgentId || typeof selectedAgentId !== 'string') return;
+    if (!selectedAgentId) return;
     
+    if (isDefaultAgent()) {
+      alert('Agentes padrão não podem ser excluídos.');
+      return;
+    }
+
     if (window.confirm('Tem certeza que deseja excluir este agente? Esta ação não pode ser desfeita.')) {
       try {
+        console.log('Deleting agent:', selectedAgentId);
         await deleteAgent(selectedAgentId);
         // Reset selection to first available agent
         const firstAgent = Object.values(AGENT_PROFILES)[0];
         setSelectedAgentId(firstAgent.id);
       } catch (err: any) {
+        console.error('Error deleting agent:', err);
         alert(`Erro ao excluir agente: ${err.message}`);
       }
     }
   };
 
   const handleNewAgent = () => {
-    setIsDefaultAgent(false);
-    setIsEditing(false);
-    setSelectedAgentId(''); // Clear selection for new agent
     setAgentForm({
+      id: '',
       nome: '',
       descricao: '',
       emoji: '🤖',
@@ -169,11 +196,12 @@ export function AgentsView() {
       ferramentas: []
     });
     setSelectedTools([]);
+    setIsEditing(true);
     setShowForm(true);
   };
 
   const handleEditAgent = () => {
-    if (isDefaultAgent) {
+    if (isDefaultAgent()) {
       alert('Agentes padrão não podem ser editados diretamente. Crie um novo agente baseado neste.');
       return;
     }
@@ -212,33 +240,36 @@ export function AgentsView() {
 
   // Get selected agent details
   const getSelectedAgent = () => {
-    if (selectedAgentId && typeof selectedAgentId === 'string') {
-      // Check if it's a default agent
-      const defaultAgent = Object.values(AGENT_PROFILES).find(agent => agent.id === selectedAgentId);
-      if (defaultAgent) {
-        return {
-          ...defaultAgent,
-          type: 'default' as const,
-          isDefault: true
-        };
-      }
-      
-      // Check if it's a custom agent
-      const customAgent = customAgents.find(agent => agent.id === selectedAgentId);
-      if (customAgent) {
-        return {
-          id: customAgent.id,
-          name: customAgent.nome,
-          description: customAgent.descricao || '',
-          emoji: customAgent.emoji,
-          systemPrompt: customAgent.system_prompt,
-          type: 'custom' as const,
-          isDefault: customAgent.is_default
-        };
-      }
+    if (!selectedAgentId) return null;
+    
+    // Check if it's a default agent
+    const defaultAgent = Object.values(AGENT_PROFILES).find(agent => agent.id === selectedAgentId);
+    if (defaultAgent) {
+      return {
+        ...defaultAgent,
+        type: 'default' as const,
+        isDefault: true
+      };
     }
+    
+    // Check if it's a custom agent
+    const customAgent = customAgents.find(agent => agent.id === selectedAgentId);
+    if (customAgent) {
+      return {
+        id: customAgent.id,
+        name: customAgent.nome,
+        description: customAgent.descricao || '',
+        emoji: customAgent.emoji,
+        systemPrompt: customAgent.system_prompt,
+        type: 'custom' as const,
+        isDefault: customAgent.is_default
+      };
+    }
+    
     return null;
   };
+
+  const selectedAgent = getSelectedAgent();
 
   return (
     <div className="flex flex-col h-full bg-zinc-950 text-zinc-100 p-6 overflow-hidden">
@@ -292,7 +323,7 @@ export function AgentsView() {
               return (
                 <button
                   key={agent.id}
-                  onClick={() => setSelectedAgentId(agent.id)}
+                  onClick={() => setSelectedAgentId(String(agent.id))}
                   className={clsx(
                     "flex flex-col items-start p-3 rounded-xl transition-all border text-left",
                     isSelected
@@ -330,54 +361,64 @@ export function AgentsView() {
             <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/80">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-md flex items-center justify-center">
-                  {getSelectedAgent()?.type === 'default' ? (
+                  {selectedAgent?.type === 'default' ? (
                     <Bot size={20} className="text-white" />
                   ) : (
-                    <span className="text-2xl">{getSelectedAgent()?.emoji}</span>
+                    <span className="text-2xl">{selectedAgent?.emoji}</span>
                   )}
                 </div>
                 <div>
-                  <h3 className="font-semibold">{getSelectedAgent()?.name || 'Selecione um agente'}</h3>
-                  {getSelectedAgent()?.type === 'custom' && (
+                  <h3 className="font-semibold">{selectedAgent?.name || 'Selecione um agente'}</h3>
+                  {selectedAgent?.type === 'custom' && (
                     <span className="text-xs text-zinc-500 italic ml-2">
-                      {getSelectedAgent()?.isDefault ? '(Padrão)' : '(Customizado)'}
+                      {selectedAgent?.isDefault ? '(Padrão)' : '(Customizado)'}
                     </span>
                   )}
                 </div>
               </div>
               
               {/* Agent Actions */}
-              <div className="flex items-center gap-2">
-                {!isDefaultAgent && (
-                  <>
-                    {isEditing ? (
-                      <button
-                        onClick={handleSaveAgent}
-                        disabled={isSaving}
-                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors shadow-md active:scale-95 disabled:opacity-50"
-                      >
-                        {isSaving ? <span className="animate-spin text-lg">◌</span> : <Check size={16} />}
-                        Salvar
-                      </button>
-                    ) : (
-                      <button
-                        onClick={handleEditAgent}
-                        className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors shadow-md active:scale-95"
-                      >
-                        <Edit size={16} />
-                        Editar
-                      </button>
-                    )}
+                <div className="flex items-center gap-2">
+                  {showForm && !selectedAgent && (
                     <button
-                      onClick={handleDeleteAgent}
-                      className="flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors shadow-md active:scale-95"
+                      onClick={handleSaveAgent}
+                      disabled={isSaving}
+                      className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors shadow-md active:scale-95 disabled:opacity-50"
                     >
-                      <Trash2 size={16} />
-                      Excluir
+                      {isSaving ? <span className="animate-spin text-lg">◌</span> : <Check size={16} />}
+                      Salvar Novo Agente
                     </button>
-                  </>
-                )}
-              </div>
+                  )}
+                  {selectedAgent && selectedAgent.type === 'custom' && (
+                    <>
+                      {showForm ? (
+                        <button
+                          onClick={handleSaveAgent}
+                          disabled={isSaving}
+                          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors shadow-md active:scale-95 disabled:opacity-50"
+                        >
+                          {isSaving ? <span className="animate-spin text-lg">◌</span> : <Check size={16} />}
+                          Salvar
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleEditAgent}
+                          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors shadow-md active:scale-95"
+                        >
+                          <Edit size={16} />
+                          Editar
+                        </button>
+                      )}
+                      <button
+                        onClick={handleDeleteAgent}
+                        className="flex items-center gap-2 bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded-lg text-xs font-medium transition-colors shadow-md active:scale-95"
+                      >
+                        <Trash2 size={16} />
+                        Excluir
+                      </button>
+                    </>
+                  )}
+                </div>
             </div>
 
             {/* Agent Form (when showing) */}
@@ -427,7 +468,7 @@ export function AgentsView() {
                       />
                     </div>
                   </div>
-                  
+                   
                   <div className="border-t border-zinc-800 pt-4">
                     <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-2 block flex items-center gap-2">
                       <Sparkles size={12} className="text-indigo-400" />
@@ -441,7 +482,7 @@ export function AgentsView() {
                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl p-4 text-sm font-mono text-indigo-300/90 focus:border-indigo-500 outline-none resize-none"
                     />
                   </div>
-                  
+                   
                   <div className="border-t border-zinc-800 pt-4">
                     <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-2 block flex items-center gap-2">
                       <MessageSquare size={12} /> Ferramentas Disponíveis
@@ -465,7 +506,7 @@ export function AgentsView() {
             )}
 
             {/* Agent Preview (when not showing form) */}
-            {!showForm && (
+            {!showForm && selectedAgent && (
               <div className="flex-1 p-6 flex flex-col gap-6 overflow-y-auto">
                 <div className="border border-zinc-800 rounded-xl p-4 bg-zinc-900/50">
                   <div className="mb-4">
@@ -475,49 +516,49 @@ export function AgentsView() {
                     <div className="space-y-2">
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-bold text-zinc-500 w-20">Nome:</span>
-                        <span className="text-zinc-300">{getSelectedAgent()?.name}</span>
+                        <span className="text-zinc-300">{selectedAgent.name}</span>
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-bold text-zinc-500 w-20">Emoji:</span>
-                        <span className="text-lg">{getSelectedAgent()?.emoji}</span>
+                        <span className="text-lg">{selectedAgent.emoji}</span>
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-bold text-zinc-500 w-20">Tipo:</span>
                         <span className={clsx(
                           "text-xs font-bold px-2 py-0.5 rounded",
-                          getSelectedAgent()?.type === 'default' 
+                          selectedAgent.type === 'default' 
                             ? "bg-indigo-600/20 text-indigo-400" 
-                            : getSelectedAgent()?.isDefault
+                            : selectedAgent.isDefault
                               ? "bg-green-600/20 text-green-400"
                               : "bg-zinc-600/20 text-zinc-400"
                         )}>
-                          {getSelectedAgent()?.type === 'default' ? 'Padrão' : getSelectedAgent()?.isDefault ? 'Padrão (Customizado)' : 'Customizado'}
+                          {selectedAgent.type === 'default' ? 'Padrão' : selectedAgent.isDefault ? 'Padrão (Customizado)' : 'Customizado'}
                         </span>
                       </div>
-                      {getSelectedAgent()?.description && (
+                      {selectedAgent.description && (
                         <div className="flex items-center gap-3">
                           <span className="text-xs font-bold text-zinc-500 w-20">Descrição:</span>
-                          <span className="text-zinc-300">{getSelectedAgent()?.description}</span>
+                          <span className="text-zinc-300">{selectedAgent.description}</span>
                         </div>
                       )}
                     </div>
                   </div>
-                  
+                   
                   <div className="border-t border-zinc-800 pt-4">
                     <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-2 block flex items-center gap-2">
                       <Sparkles size={12} className="text-indigo-400" />
                       System Prompt Atual
                     </label>
                     <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 h-96 overflow-y-auto font-mono text-xs text-indigo-300/90">
-                      {getSelectedAgent()?.systemPrompt || 'Nenhum system prompt definido'}
+                      {selectedAgent.systemPrompt || 'Nenhum system prompt definido'}
                     </div>
                   </div>
-                  
+                   
                   <div className="border-t border-zinc-800 pt-4">
                     <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-2 block flex items-center gap-2">
                       <MessageSquare size={12} /> Ferramentas Ativas
                     </label>
-                    {getSelectedAgent()?.type === 'custom' ? (
+                    {selectedAgent.type === 'custom' ? (
                       <>
                         {selectedTools.length > 0 ? (
                           <div className="flex flex-wrap gap-2">
@@ -537,26 +578,6 @@ export function AgentsView() {
                     ) : (
                       <p className="text-xs text-zinc-500 italic">Agentes padrão não configuram ferramentas diretamente</p>
                     )}
-                  </div>
-                </div>
-                
-                {/* Tips and Suggestions */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-zinc-800/30 p-4 rounded-xl border border-zinc-700/30">
-                    <h4 className="text-xs font-bold uppercase text-zinc-500 mb-2 flex items-center gap-2">
-                      <MessageSquare size={12} /> Sugestão de Uso
-                    </h4>
-                    <p className="text-xs text-zinc-400">
-                      Use agentes especializados para tarefas específicas como análise de dados, programação ou pesquisa.
-                    </p>
-                  </div>
-                  <div className="bg-indigo-600/5 p-4 rounded-xl border border-indigo-500/20">
-                    <h4 className="text-xs font-bold uppercase text-indigo-400/70 mb-2 flex items-center gap-2">
-                      <Sparkles size={12} /> Dica Pro
-                    </h4>
-                    <p className="text-xs text-zinc-400">
-                      Comece clonando um agente padrão e depois personalize conforme suas necessidades.
-                    </p>
                   </div>
                 </div>
               </div>
