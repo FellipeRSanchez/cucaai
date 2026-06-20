@@ -59,10 +59,41 @@ export async function assembleContext(query: string, userId?: string, projectId?
       };
     }
 
-    // 1. Fetch Memories (keyword-based)
+    // 1. Fetch Memories (vector search first, then keyword fallback)
     let memories: MemoryRow[] = [];
     try {
-      if (terms.length > 0) {
+      // Primary: vector similarity search via RPC
+      try {
+        const queryEmbedding = await generateEmbedding(query);
+        const embeddingStr = `[${queryEmbedding.join(',')}]`;
+        console.log(`[RAG] Embedding generated: dim=${queryEmbedding.length}, first5=[${queryEmbedding.slice(0, 5).map(v => v.toFixed(6)).join(',')}], last3=[${queryEmbedding.slice(-3).map(v => v.toFixed(6)).join(',')}]`);
+
+        const { data: vectorMemories, error: vectorError } = await supabase.rpc('match_memorias', {
+          query_embedding: embeddingStr,
+          match_threshold: 0.3,
+          match_count: 10,
+          p_user_id: userId
+        });
+
+        console.log(`[RAG] match_memorias RPC: error=${vectorError?.message ?? 'none'}, data=${vectorMemories ? `array[${vectorMemories.length}]` : 'null'}${vectorMemories && vectorMemories.length > 0 ? ` (best=${vectorMemories[0]?.similarity?.toFixed(4) ?? '?'})` : ''}`);
+
+        if (vectorError) {
+          console.error('[RAG] Vector memory RPC error:', vectorError);
+        } else if (vectorMemories && vectorMemories.length > 0) {
+          memories = vectorMemories.map((m: { mem_conteudo: string; mem_criado_em?: string; similarity?: number }) => ({
+            mem_conteudo: m.mem_conteudo,
+            mem_criado_em: m.mem_criado_em
+          })) as MemoryRow[];
+          console.log(`[RAG] Vector search found ${memories.length} memories (best similarity: ${vectorMemories[0]?.similarity?.toFixed(4) ?? '?'})`);
+        } else {
+          console.log('[RAG] Vector search returned 0 results, trying keyword fallback');
+        }
+      } catch (vectorErr) {
+        console.error('[RAG] Vector memory search failed, falling back to keywords:', vectorErr);
+      }
+
+      // Fallback: keyword-based search if vector search returned nothing
+      if (memories.length === 0 && terms.length > 0) {
         const orFilterMemories = terms
           .slice(0, 3)
           .map((t) => `mem_conteudo.ilike.%${t}%`)
@@ -86,12 +117,30 @@ export async function assembleContext(query: string, userId?: string, projectId?
           .limit(5);
 
         if (memoryError) {
-          console.error('[RAG] Erro ao buscar memórias por palavras-chave:', memoryError);
+          console.error('[RAG] Keyword memory search failed, trying without project filter:', memoryError);
+          // Retry without project filter (mem_projeto_id column might not exist)
+          try {
+            const { data: retryMemories, error: retryError } = await supabase
+              .schema('cuca')
+              .from('memorias')
+              .select('mem_conteudo, mem_criado_em')
+              .eq('mem_usuario_id', userId)
+              .or(orFilterMemories)
+              .order('mem_criado_em', { ascending: false })
+              .limit(5);
+
+            if (!retryError && retryMemories) {
+              memories = retryMemories as MemoryRow[];
+            }
+          } catch {
+            // ignore
+          }
         } else {
           memories = (matchedMemories ?? []) as MemoryRow[];
         }
       }
 
+      // Last fallback: most recent memories
       if (memories.length === 0) {
         let latestMemQuery = supabase
           .schema('cuca')
@@ -110,7 +159,23 @@ export async function assembleContext(query: string, userId?: string, projectId?
           .limit(3);
 
         if (latestMemoryError) {
-          console.error('[RAG] Erro ao buscar memórias recentes:', latestMemoryError);
+          console.error('[RAG] Latest memories query failed, trying without project filter:', latestMemoryError);
+          // Retry without project filter
+          try {
+            const { data: retryLatest, error: retryErr } = await supabase
+              .schema('cuca')
+              .from('memorias')
+              .select('mem_conteudo, mem_criado_em')
+              .eq('mem_usuario_id', userId)
+              .order('mem_criado_em', { ascending: false })
+              .limit(3);
+
+            if (!retryErr && retryLatest) {
+              memories = retryLatest as MemoryRow[];
+            }
+          } catch {
+            // ignore
+          }
         } else {
           memories = (latestMemories ?? []) as MemoryRow[];
         }
@@ -127,10 +192,12 @@ export async function assembleContext(query: string, userId?: string, projectId?
 
       const { data: matchedChunks, error: chunkError } = await supabase.rpc('match_document_chunks', {
         query_embedding: embeddingStr,
-        match_threshold: 0.35, // Low threshold to allow some variety
-        match_count: 8,       // More chunks for better context
+        match_threshold: 0.25,
+        match_count: 8,
         p_usuario_id: userId
       });
+
+      console.log(`[RAG] match_document_chunks RPC: error=${chunkError?.message ?? 'none'}, data=${matchedChunks ? `array[${matchedChunks.length}]` : 'null'}`);
 
       if (chunkError) {
         console.error('[RAG] Vector search error (RPC):', chunkError);
@@ -206,8 +273,8 @@ export async function assembleContext(query: string, userId?: string, projectId?
       : '';
 
     return {
-      memories: memoriesText || 'Nenhuma memória relevante encontrada.',
-      documents: documentsText || 'Nenhum documento relevante encontrado.'
+      memories: memoriesText,
+      documents: documentsText
     };
   } catch (error) {
     console.error('Error assembling context:', error);

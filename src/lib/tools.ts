@@ -45,72 +45,90 @@ function extractCoordinates(input: string) {
 
 
 // 1. Memory Search
-// This tool allows the agent to query the vector database for long-term or short-term memories.
-export const searchMemory = tool({
-  description: 'Search the user\'s personal permanent memory for context, preferences, or past events.',
-  parameters: z.object({
-    query: z.string().describe('The search query to look for in the user\'s memory.'),
-  }),
-  execute: async ({ query }) => {
-    const supabase = getServiceSupabase();
-    // In actual implementation, generate embedding and call supabase RPC for memory search
-    const embedding = await generateEmbedding(query);
-    const embeddingStr = `[${embedding.join(',')}]`;
+// Factory function that creates a memory search tool scoped to a specific user.
+export function createSearchMemory(userId: string) {
+  return tool({
+    description: 'Search the user\'s personal permanent memory for context, preferences, or past events.',
+    parameters: z.object({
+      query: z.string().describe('The search query to look for in the user\'s memory.'),
+    }),
+    execute: async ({ query }) => {
+      try {
+        const supabase = getServiceSupabase();
+        const embedding = await generateEmbedding(query);
+        const embeddingStr = `[${embedding.join(',')}]`;
 
-    // Note: This requires an RPC function called 'match_memorias' to be added to Supabase
-    // that compares `mem_embedding` with the query embedding.
-    const { data, error } = await supabase.rpc('match_memorias', {
-      query_embedding: embeddingStr,
-      match_threshold: 0.75, // Lower threshold for broader context
-      match_count: 5 // Get top 5 memories
-    });
+        const { data, error } = await supabase.rpc('match_memorias', {
+          query_embedding: embeddingStr,
+          match_threshold: 0.3,
+          match_count: 10,
+          p_user_id: userId
+        });
 
-    if (error) {
-       console.error("Error searching memory:", error);
-       return { success: false, error: 'Failed to access memory.' };
-    }
+        if (error) {
+           console.error("[searchMemory] RPC error:", error);
+           return { success: false, error: 'Failed to access memory.' };
+        }
 
-    if (!data || data.length === 0) {
-      return { success: true, message: 'No relevant memories found for this query.' };
-    }
+        if (!data || data.length === 0) {
+          return { success: true, message: 'No relevant memories found for this query.' };
+        }
 
-    // Return the content of the matched memories
-    const memoriesText = data.map((m: any) => m.mem_conteudo).join('\n---\n');
-    return { success: true, results: memoriesText };
-  },
-});
+        const memoriesText = data.map((m: any) => m.mem_conteudo).join('\n---\n');
+        return { success: true, results: memoriesText };
+      } catch (err) {
+        console.error("[searchMemory] Exception:", err);
+        return { success: false, error: 'Memory search failed: ' + (err instanceof Error ? err.message : 'unknown error') };
+      }
+    },
+  });
+}
+
+// Default export for backward compatibility (no user scoping — avoid using directly)
+export const searchMemory = createSearchMemory('');
 
 // 2. Document Search (RAG)
-export const searchDocuments = tool({
-  description: 'Search through the user\'s uploaded documents and files for specific information.',
-  parameters: z.object({
-    query: z.string().describe('The search query or specific question to answer based on documents.'),
-  }),
-  execute: async ({ query }) => {
-    const supabase = getServiceSupabase();
-    const embedding = await generateEmbedding(query);
-    const embeddingStr = `[${embedding.join(',')}]`;
+// Factory function that creates a document search tool scoped to a specific user.
+export function createSearchDocuments(userId: string) {
+  return tool({
+    description: 'Search through the user\'s uploaded documents and files for specific information.',
+    parameters: z.object({
+      query: z.string().describe('The search query or specific question to answer based on documents.'),
+    }),
+    execute: async ({ query }) => {
+      try {
+        const supabase = getServiceSupabase();
+        const embedding = await generateEmbedding(query);
+        const embeddingStr = `[${embedding.join(',')}]`;
 
-    // Note: Requires RPC 'match_documentos' in Supabase
-    const { data, error } = await supabase.rpc('match_documentos', {
-      query_embedding: embeddingStr,
-      match_threshold: 0.75,
-      match_count: 5
-    });
+        const { data, error } = await supabase.rpc('match_document_chunks', {
+          query_embedding: embeddingStr,
+          match_threshold: 0.25,
+          match_count: 8,
+          p_usuario_id: userId
+        });
 
-    if (error) {
-       console.error("Error searching documents:", error);
-       return { success: false, error: 'Failed to access documents.' };
-    }
+        if (error) {
+           console.error("[searchDocuments] RPC error:", error);
+           return { success: false, error: 'Failed to access documents.' };
+        }
 
-    if (!data || data.length === 0) {
-      return { success: true, message: 'No relevant documents found.' };
-    }
+        if (!data || data.length === 0) {
+          return { success: true, message: 'No relevant documents found.' };
+        }
 
-    const docsText = data.map((d: any) => `Document ID ${d.doc_id}:\n${d.dch_texto}`).join('\n---\n');
-    return { success: true, results: docsText };
-  },
-});
+        const docsText = data.map((d: any) => `Documento [${d.doc_nome}]:\n${d.dch_texto}`).join('\n---\n');
+        return { success: true, results: docsText };
+      } catch (err) {
+        console.error("[searchDocuments] Exception:", err);
+        return { success: false, error: 'Document search failed: ' + (err instanceof Error ? err.message : 'unknown error') };
+      }
+    },
+  });
+}
+
+// Default export for backward compatibility (no user scoping — avoid using directly)
+export const searchDocuments = createSearchDocuments('');
 
 import { searchWeb } from './webSearch';
 
@@ -381,3 +399,79 @@ export const systemTools = {
   editDocument,
   invokeAgent,
 };
+
+/**
+ * Creates system tools with user-scoped memory and document search.
+ * Use this instead of `systemTools` when userId is available.
+ */
+export function createSystemTools(userId: string) {
+  const scopedSearchMemory = createSearchMemory(userId);
+  const scopedSearchDocuments = createSearchDocuments(userId);
+
+  const scopedInvokeAgent = tool({
+    description: 'Delegar uma tarefa a um agente customizado existente. Use para consultas especializadas.',
+    parameters: z.object({
+      agent_id: z.string().describe('ID do agente customizado (UUID).'),
+      task: z.string().describe('Tarefa a ser executada pelo agente delegado.')
+    }),
+    execute: async ({ agent_id, task }) => {
+      const supabase = getServiceSupabase();
+
+      const { data: customAgent, error } = await supabase
+        .schema('cuca')
+        .from('agentes')
+        .select('nome, system_prompt, ferramentas')
+        .eq('id', agent_id)
+        .single();
+
+      if (error || !customAgent) {
+        return { success: false, error: 'Agente customizado não encontrado.' };
+      }
+
+      const agentFerramentas: string[] = customAgent.ferramentas || [];
+
+      const availableTools: Record<string, unknown> = {};
+      const toolRegistry: Record<string, unknown> = {
+        searchMemory: scopedSearchMemory,
+        searchDocuments: scopedSearchDocuments,
+        internetSearch,
+        weatherForecast,
+        analyzeVideo,
+        createDocument,
+        editDocument,
+      };
+
+      for (const toolValue of agentFerramentas) {
+        const toolKey = toolNameMap[toolValue];
+        if (toolKey && toolKey in toolRegistry) {
+          availableTools[toolKey] = toolRegistry[toolKey];
+        }
+      }
+
+      const result = await generateText({
+        model: openRouter('openai/chatgpt-4o-latest'),
+        messages: [{ role: 'user', content: task }],
+        system: customAgent.system_prompt,
+        tools: availableTools as Record<string, unknown> as Parameters<typeof generateText>[0]['tools'],
+        maxSteps: 3,
+      } as Parameters<typeof generateText>[0]);
+
+      return {
+        success: true,
+        agent_name: customAgent.nome,
+        result: result.text
+      };
+    },
+  });
+
+  return {
+    searchMemory: scopedSearchMemory,
+    searchDocuments: scopedSearchDocuments,
+    internetSearch,
+    weatherForecast,
+    analyzeVideo,
+    createDocument,
+    editDocument,
+    invokeAgent: scopedInvokeAgent,
+  };
+}

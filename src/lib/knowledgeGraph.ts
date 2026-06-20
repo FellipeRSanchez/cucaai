@@ -31,23 +31,23 @@ Assistente: ${assistantResponse}`;
 
     // 1. Save Entidades
     for (const ent of extraction.entidades) {
-      await supabase.schema('cuca').from('entidades').upsert({
+      await supabase.schema('cuca').from('grafo_entidades').upsert({
         ent_nome: ent.nome,
         ent_tipo: ent.tipo,
-        ent_descricao: ent.descricao
-      }, { onConflict: 'ent_nome' });
+        ent_metadados: ent.descricao ? { descricao: ent.descricao } : null
+      }, { onConflict: 'ent_nome,ent_tipo' });
     }
 
     // 2. Save Relacoes
     // Relacoes depend of ent_id, so we need to fetch them first or do it carefully
     for (const rel of extraction.relacoes) {
-      const { data: e1 } = await supabase.schema('cuca').from('entidades').select('ent_id').eq('ent_nome', rel.entidade1).single();
-      const { data: e2 } = await supabase.schema('cuca').from('entidades').select('ent_id').eq('ent_nome', rel.entidade2).single();
+      const { data: e1 } = await supabase.schema('cuca').from('grafo_entidades').select('ent_id').eq('ent_nome', rel.entidade1).single();
+      const { data: e2 } = await supabase.schema('cuca').from('grafo_entidades').select('ent_id').eq('ent_nome', rel.entidade2).single();
 
       if (e1 && e2) {
-        await supabase.schema('cuca').from('relacoes').insert({
-          rel_entidade1: e1.ent_id,
-          rel_entidade2: e2.ent_id,
+        await supabase.schema('cuca').from('grafo_relacoes').insert({
+          rel_entidade_origem: e1.ent_id,
+          rel_entidade_destino: e2.ent_id,
           rel_tipo: rel.tipo
         });
       }

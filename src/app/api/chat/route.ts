@@ -6,7 +6,7 @@ import { cookies } from 'next/headers';
 import { createServerClient } from '@supabase/auth-helpers-nextjs';
 import { checkSemanticCache, saveToSemanticCache } from '@/services/semanticCache';
 import { AGENT_PROFILES, AgentRole } from '@/lib/agents';
-import { systemTools } from '@/lib/tools';
+import { createSystemTools } from '@/lib/tools';
 import { runMemoryManager } from '@/lib/memoryManager';
 import { runSelfReflection } from '@/lib/selfReflection';
 import { assembleContext } from '@/lib/contextAssembler';
@@ -208,7 +208,7 @@ export async function POST(req: Request) {
     let activeConversationId = conversationId;
 
     // Filter tools based on user preference
-    const tools = { ...systemTools };
+    const tools = { ...createSystemTools(userId) };
     if (!webSearchEnabled) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const mutableTools = tools as any;
@@ -496,7 +496,14 @@ export async function POST(req: Request) {
     }
 
     // 3. Assemble RAG context (memories + documents)
-    const { memories, documents } = await assembleContext(textQuery, userId, activeConversationId || undefined).catch(() => ({ memories: '', documents: '' }));
+    const { memories, documents } = await assembleContext(textQuery, userId, projetoId || undefined).catch((err) => {
+      console.error('[Chat API] assembleContext failed:', err);
+      return { memories: '', documents: '' };
+    });
+
+    if (!memories && !documents) {
+      console.log('[Chat API] No RAG context available for this query');
+    }
 
     let ragContext = '';
     if (memories || documents) {
@@ -591,7 +598,7 @@ export async function POST(req: Request) {
 
         if (isUserMessage && text) {
           await saveToSemanticCache(textQuery, text, modelToUse).catch(() => {});
-          runMemoryManager(messages, text, userId, null).catch(() => {});
+          runMemoryManager(messages, text, userId, projetoId || null).catch(() => {});
           runSelfReflection(textQuery, text).catch(() => {});
           runKnowledgeGraphManager(textQuery, text).catch(() => {});
         }
